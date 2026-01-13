@@ -20,10 +20,10 @@ impl StreamOutput {
         }
 
         let state_str = match state {
-            GameState::SongSelect => "SELECT",
-            GameState::Playing => "PLAYING",
-            GameState::ResultScreen => "RESULT",
-            GameState::Unknown => "UNKNOWN",
+            GameState::SongSelect => "menu",
+            GameState::Playing => "play",
+            GameState::ResultScreen => "menu",
+            GameState::Unknown => "off",
         };
 
         self.write_file("playstate.txt", state_str)
