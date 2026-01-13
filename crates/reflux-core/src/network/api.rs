@@ -1,11 +1,46 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use reqwest::Client;
 
 use crate::error::{Error, Result};
 use crate::network::HttpClient;
+
+/// RAII wrapper for temporary files that ensures cleanup on drop
+struct TempFile {
+    path: PathBuf,
+    persisted: bool,
+}
+
+impl TempFile {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            persisted: false,
+        }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Rename the temp file to the target path. Consumes self and prevents cleanup.
+    fn persist(mut self, target: &Path) -> std::io::Result<()> {
+        fs::rename(&self.path, target)?;
+        self.persisted = true;
+        Ok(())
+    }
+}
+
+impl Drop for TempFile {
+    fn drop(&mut self) {
+        if !self.persisted {
+            // Best-effort cleanup; ignore errors
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
 
 const GITHUB_RELEASES_URL: &str = "https://github.com/olji/Reflux/releases/latest";
 
@@ -27,11 +62,11 @@ pub struct RefluxApi {
 }
 
 impl RefluxApi {
-    pub fn new(server_address: String, api_key: String) -> Self {
-        Self {
-            client: HttpClient::new(server_address.clone(), api_key),
+    pub fn new(server_address: String, api_key: String) -> Result<Self> {
+        Ok(Self {
+            client: HttpClient::new(server_address.clone(), api_key)?,
             update_server: server_address,
-        }
+        })
     }
 
     /// Set the update server URL (for fetching support files)
@@ -102,6 +137,11 @@ impl RefluxApi {
 
         // Compare versions (format: YYYYMMDD)
         if remote_version > current_version {
+            // Write to temp file first for atomic update
+            // TempFile ensures cleanup even if subsequent operations fail
+            let temp_file = TempFile::new(path.as_ref().with_extension("tmp"));
+            fs::write(temp_file.path(), &content)?;
+
             // Archive old file if it exists
             if path.as_ref().exists() {
                 let archive_dir = path
@@ -116,8 +156,9 @@ impl RefluxApi {
                 fs::rename(&path, archive_path)?;
             }
 
-            // Write new file
-            fs::write(&path, content)?;
+            // Rename temp file to target (atomic on most filesystems)
+            // This consumes temp_file and prevents cleanup
+            temp_file.persist(path.as_ref())?;
             return Ok(true);
         }
 
@@ -136,6 +177,10 @@ impl RefluxApi {
         if remote_version != version {
             return Ok(false);
         }
+
+        // Write to temp file first for atomic update
+        let temp_path = path.as_ref().with_extension("tmp");
+        fs::write(&temp_path, &content)?;
 
         // Archive old file if it exists
         if path.as_ref().exists() {
@@ -156,7 +201,8 @@ impl RefluxApi {
             fs::rename(&path, archive_path)?;
         }
 
-        fs::write(&path, content)?;
+        // Rename temp file to target (atomic on most filesystems)
+        fs::rename(&temp_path, &path)?;
         Ok(true)
     }
 

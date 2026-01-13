@@ -163,6 +163,8 @@ impl ScoreMap {
             score_data.lamp[difficulty_index] =
                 Lamp::from_u8(node.lamp as u8).unwrap_or(Lamp::NoPlay);
             score_data.score[difficulty_index] = node.score;
+            // INFINITAS uses u32::MAX as sentinel value to indicate miss_count data is unavailable
+            // (e.g., for legacy scores or when the game doesn't track this information)
             score_data.miss_count[difficulty_index] =
                 if node.miss_count == u32::MAX { None } else { Some(node.miss_count) };
         }

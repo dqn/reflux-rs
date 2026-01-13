@@ -15,3 +15,4 @@ tokio.workspace = true
 clap.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+ctrlc = "3.4"

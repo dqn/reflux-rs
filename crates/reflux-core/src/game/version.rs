@@ -7,34 +7,61 @@ const VERSION_PREFIX: &str = "P2D:J:B:A:";
 /// Expected version string length (e.g., "P2D:J:B:A:2024101500")
 const VERSION_LENGTH: usize = 20;
 
-/// Search buffer size (80MB)
-const SEARCH_BUFFER_SIZE: usize = 80_000_000;
+/// Chunk size for memory reading (1MB)
+const CHUNK_SIZE: usize = 1_000_000;
+
+/// Maximum search size (80MB total)
+const MAX_SEARCH_SIZE: usize = 80_000_000;
 
 /// Find the game version string from process memory
 ///
 /// Searches for "P2D:J:B:A:YYYYMMDDNN" pattern in the first 80MB of memory.
+/// Uses chunked reading (1MB at a time) to reduce memory usage.
 /// Note: The first two occurrences are old 2016 builds, so we return the last found.
 pub fn find_game_version(reader: &MemoryReader, base_address: u64) -> Result<Option<String>> {
-    // Read 80MB of memory
-    let buffer = match reader.read_bytes(base_address, SEARCH_BUFFER_SIZE) {
-        Ok(buf) => buf,
-        Err(_) => return Ok(None),
-    };
-
-    // Convert to Shift-JIS string (lossy conversion for searching)
-    let text = decode_shift_jis(&buffer);
-
-    // Search for version prefix, keeping track of the last occurrence
+    let end_addr = base_address + MAX_SEARCH_SIZE as u64;
+    let mut current_addr = base_address;
     let mut last_found: Option<String> = None;
 
-    for i in 0..text.len().saturating_sub(VERSION_LENGTH) {
-        if text[i..].starts_with(VERSION_PREFIX) && i + VERSION_LENGTH <= text.len() {
-            let version = &text[i..i + VERSION_LENGTH];
-            // Validate that the version looks correct (ends with digits)
-            if is_valid_version(version) {
-                last_found = Some(version.to_string());
+    // Buffer to handle version strings that span chunk boundaries
+    let mut overlap_buffer = String::new();
+
+    while current_addr < end_addr {
+        let remaining = (end_addr - current_addr) as usize;
+        let chunk_size = std::cmp::min(CHUNK_SIZE, remaining);
+
+        let chunk = match reader.read_bytes(current_addr, chunk_size) {
+            Ok(buf) => buf,
+            Err(_) => break,
+        };
+
+        // Convert to string (ASCII only for version search)
+        let text = decode_shift_jis(&chunk);
+
+        // Combine with overlap from previous chunk to handle boundary cases
+        let search_text = format!("{}{}", overlap_buffer, text);
+
+        // Search for version prefix
+        for i in 0..search_text.len().saturating_sub(VERSION_LENGTH) {
+            if search_text[i..].starts_with(VERSION_PREFIX)
+                && i + VERSION_LENGTH <= search_text.len()
+            {
+                let version = &search_text[i..i + VERSION_LENGTH];
+                if is_valid_version(version) {
+                    last_found = Some(version.to_string());
+                }
             }
         }
+
+        // Keep the last VERSION_LENGTH-1 bytes for next iteration
+        // to handle version strings that span chunk boundaries
+        if text.len() >= VERSION_LENGTH {
+            overlap_buffer = text[text.len() - VERSION_LENGTH + 1..].to_string();
+        } else {
+            overlap_buffer = text;
+        }
+
+        current_addr += chunk_size as u64;
     }
 
     Ok(last_found)

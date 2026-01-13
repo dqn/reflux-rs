@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use tracing::warn;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TrackerInfo {
@@ -58,15 +59,100 @@ impl Tracker {
         let content = fs::read_to_string(path)?;
         let mut tracker = Self::new();
 
-        for line in content.lines() {
+        // Error tracking for summary
+        let mut total_lines = 0usize;
+        let mut parsed_lines = 0usize;
+        let mut skipped_lines = 0usize;
+        let mut field_errors = 0usize;
+
+        for (line_num, line) in content.lines().enumerate() {
+            total_lines += 1;
             let parts: Vec<&str> = line.split(',').collect();
             if parts.len() >= 6 {
-                let song_id: u32 = parts[0].parse().unwrap_or(0);
-                let difficulty =
-                    Difficulty::from_u8(parts[1].parse().unwrap_or(0)).unwrap_or(Difficulty::SpN);
-                let grade = Grade::from_u8(parts[2].parse().unwrap_or(0)).unwrap_or(Grade::NoPlay);
-                let lamp = Lamp::from_u8(parts[3].parse().unwrap_or(0)).unwrap_or(Lamp::NoPlay);
-                let ex_score: u32 = parts[4].parse().unwrap_or(0);
+                let song_id: u32 = match parts[0].parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        warn!(
+                            "tracker.txt line {}: failed to parse song_id '{}'",
+                            line_num + 1,
+                            parts[0]
+                        );
+                        skipped_lines += 1;
+                        continue;
+                    }
+                };
+                let difficulty = match parts[1].parse::<u8>() {
+                    Ok(v) => Difficulty::from_u8(v).unwrap_or_else(|| {
+                        warn!(
+                            "tracker.txt line {}: invalid difficulty value {}",
+                            line_num + 1,
+                            v
+                        );
+                        field_errors += 1;
+                        Difficulty::SpN
+                    }),
+                    Err(_) => {
+                        warn!(
+                            "tracker.txt line {}: failed to parse difficulty '{}'",
+                            line_num + 1,
+                            parts[1]
+                        );
+                        skipped_lines += 1;
+                        continue;
+                    }
+                };
+                let grade = match parts[2].parse::<u8>() {
+                    Ok(v) => Grade::from_u8(v).unwrap_or_else(|| {
+                        warn!(
+                            "tracker.txt line {}: invalid grade value {}",
+                            line_num + 1,
+                            v
+                        );
+                        field_errors += 1;
+                        Grade::NoPlay
+                    }),
+                    Err(_) => {
+                        warn!(
+                            "tracker.txt line {}: failed to parse grade '{}'",
+                            line_num + 1,
+                            parts[2]
+                        );
+                        field_errors += 1;
+                        Grade::NoPlay
+                    }
+                };
+                let lamp = match parts[3].parse::<u8>() {
+                    Ok(v) => Lamp::from_u8(v).unwrap_or_else(|| {
+                        warn!(
+                            "tracker.txt line {}: invalid lamp value {}",
+                            line_num + 1,
+                            v
+                        );
+                        field_errors += 1;
+                        Lamp::NoPlay
+                    }),
+                    Err(_) => {
+                        warn!(
+                            "tracker.txt line {}: failed to parse lamp '{}'",
+                            line_num + 1,
+                            parts[3]
+                        );
+                        field_errors += 1;
+                        Lamp::NoPlay
+                    }
+                };
+                let ex_score: u32 = match parts[4].parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        warn!(
+                            "tracker.txt line {}: failed to parse ex_score '{}', using 0",
+                            line_num + 1,
+                            parts[4]
+                        );
+                        field_errors += 1;
+                        0
+                    }
+                };
                 let miss_count: Option<u32> = parts[5].parse().ok();
 
                 let key = ChartKey {
@@ -81,7 +167,18 @@ impl Tracker {
                     dj_points: 0.0,
                 };
                 tracker.db.insert(key, info);
+                parsed_lines += 1;
+            } else {
+                skipped_lines += 1;
             }
+        }
+
+        // Report parse summary if there were any issues
+        if skipped_lines > 0 || field_errors > 0 {
+            warn!(
+                "Tracker load summary: {} total lines, {} parsed, {} skipped, {} field errors",
+                total_lines, parsed_lines, skipped_lines, field_errors
+            );
         }
 
         Ok(tracker)

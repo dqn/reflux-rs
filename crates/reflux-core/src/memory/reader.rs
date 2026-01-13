@@ -21,6 +21,12 @@ impl<'a> MemoryReader<'a> {
         let mut buffer = vec![0u8; size];
         let mut bytes_read = 0;
 
+        // SAFETY: ReadProcessMemory is called with:
+        // - A valid process handle from ProcessHandle (obtained via OpenProcess with PROCESS_VM_READ)
+        // - An address within the target process's address space
+        // - A properly allocated buffer of the requested size
+        // - A pointer to receive the actual bytes read
+        // The function may fail if the address is invalid, but this is handled via Result.
         unsafe {
             ReadProcessMemory(
                 self.process.handle(),
@@ -35,6 +41,8 @@ impl<'a> MemoryReader<'a> {
             })?;
         }
 
+        // This function guarantees all-or-nothing reads. Partial reads are treated as errors
+        // because game memory structures require complete data for correct interpretation.
         if bytes_read != size {
             return Err(Error::MemoryReadFailed {
                 address,

@@ -5,6 +5,8 @@ use reflux_core::{
     export_song_list, fetch_song_database, load_offsets,
 };
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tracing::{error, info, warn};
@@ -37,6 +39,14 @@ async fn main() -> Result<()> {
                 .add_directive("reflux_core=info".parse()?),
         )
         .init();
+
+    // Setup graceful shutdown handler
+    let running = Arc::new(AtomicBool::new(true));
+    let r = Arc::clone(&running);
+    ctrlc::set_handler(move || {
+        info!("Received shutdown signal, stopping...");
+        r.store(false, Ordering::SeqCst);
+    })?;
 
     let args = Args::parse();
 
@@ -89,8 +99,8 @@ async fn main() -> Result<()> {
         warn!("Failed to load tracker: {}", e);
     }
 
-    // Main loop: wait for process
-    loop {
+    // Main loop: wait for process (exits on Ctrl+C)
+    while running.load(Ordering::SeqCst) {
         info!("Waiting for INFINITAS process...");
 
         match ProcessHandle::find_and_open() {
@@ -167,9 +177,7 @@ async fn main() -> Result<()> {
                     Ok(ct) => {
                         let types: std::collections::HashMap<u32, String> = ct
                             .iter()
-                            .filter_map(|(k, v): (&String, &String)| {
-                                k.parse::<u32>().ok().map(|id| (id, v.clone()))
-                            })
+                            .filter_map(|(k, v)| k.parse::<u32>().ok().map(|id| (id, v.clone())))
                             .collect();
                         info!("Loaded {} custom types", types.len());
                         reflux.set_custom_types(types);
@@ -217,8 +225,16 @@ async fn main() -> Result<()> {
             }
         }
 
+        // Check if we should continue or exit
+        if !running.load(Ordering::SeqCst) {
+            break;
+        }
+
         thread::sleep(Duration::from_secs(5));
     }
+
+    info!("Shutdown complete");
+    Ok(())
 }
 
 /// Compare semantic versions to check if latest is newer than current

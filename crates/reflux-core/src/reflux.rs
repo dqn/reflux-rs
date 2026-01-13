@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
 use chrono::Utc;
 use tokio::runtime::Handle;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
 use crate::error::Result;
@@ -121,6 +123,8 @@ pub struct Reflux {
     unlock_db: UnlockDb,
     /// Tokio runtime handle for spawning async tasks
     runtime_handle: Option<Handle>,
+    /// Counter for failed remote API calls
+    failed_remote_count: Arc<AtomicUsize>,
 }
 
 impl Reflux {
@@ -135,10 +139,16 @@ impl Reflux {
         );
 
         let api = if config.record.save_remote {
-            Some(RefluxApi::new(
+            match RefluxApi::new(
                 config.remote_record.server_address.clone(),
                 config.remote_record.api_key.clone(),
-            ))
+            ) {
+                Ok(api) => Some(api),
+                Err(e) => {
+                    warn!("Failed to create API client: {}, remote saving disabled", e);
+                    None
+                }
+            }
         } else {
             None
         };
@@ -157,6 +167,7 @@ impl Reflux {
             api,
             unlock_db: UnlockDb::new(),
             runtime_handle,
+            failed_remote_count: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -228,10 +239,37 @@ impl Reflux {
                 .write_marquee(&self.config.livestream.marquee_idle_text);
         }
 
+        const MAX_READ_RETRIES: u32 = 3;
+        const RETRY_DELAY_MS: u64 = 50;
+
         loop {
-            // Check if process is still alive
-            if reader.read_bytes(process.base_address, 4).is_err() {
-                info!("Process terminated");
+            // Check if process is still alive with retry mechanism
+            let mut process_alive = false;
+            for attempt in 0..MAX_READ_RETRIES {
+                match reader.read_bytes(process.base_address, 4) {
+                    Ok(_) => {
+                        process_alive = true;
+                        break;
+                    }
+                    Err(e) => {
+                        if attempt < MAX_READ_RETRIES - 1 {
+                            debug!(
+                                "Memory read failed (attempt {}/{}): {}",
+                                attempt + 1,
+                                MAX_READ_RETRIES,
+                                e
+                            );
+                            thread::sleep(Duration::from_millis(RETRY_DELAY_MS));
+                        } else {
+                            info!(
+                                "Process terminated after {} retries: {}",
+                                MAX_READ_RETRIES, e
+                            );
+                        }
+                    }
+                }
+            }
+            if !process_alive {
                 break;
             }
 
@@ -253,6 +291,15 @@ impl Reflux {
         }
         if self.config.livestream.enable_marquee {
             let _ = self.stream_output.write_marquee("NO SIGNAL");
+        }
+
+        // Report failed remote API calls if any
+        let failed_count = self.failed_remote_count.load(Ordering::SeqCst);
+        if failed_count > 0 {
+            warn!(
+                "{} remote API call(s) failed during this session",
+                failed_count
+            );
         }
 
         Ok(())
@@ -296,15 +343,35 @@ impl Reflux {
 
     /// Handle transition to result screen
     fn handle_result_screen(&mut self, reader: &MemoryReader) {
-        // Wait a bit to avoid race condition
-        thread::sleep(Duration::from_secs(1));
+        const MAX_POLL_ATTEMPTS: u32 = 50;
+        const POLL_INTERVAL_MS: u64 = 100;
 
-        match self.fetch_play_data(reader) {
-            Ok(play_data) => {
-                self.process_play_result(&play_data);
-            }
-            Err(e) => {
-                error!("Failed to fetch play data: {}", e);
+        // Poll until play data becomes available (max 5 seconds)
+        for attempt in 0..MAX_POLL_ATTEMPTS {
+            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+
+            match self.fetch_play_data(reader) {
+                Ok(play_data) => {
+                    // Verify data looks valid (non-zero total notes)
+                    let total_notes = play_data.judge.pgreat
+                        + play_data.judge.great
+                        + play_data.judge.good
+                        + play_data.judge.bad
+                        + play_data.judge.poor;
+                    if total_notes > 0 {
+                        self.process_play_result(&play_data);
+                        return;
+                    }
+                    // Data not ready yet, continue polling
+                    if attempt == MAX_POLL_ATTEMPTS - 1 {
+                        warn!("Play data notes count is zero after {} attempts", MAX_POLL_ATTEMPTS);
+                    }
+                }
+                Err(e) => {
+                    if attempt == MAX_POLL_ATTEMPTS - 1 {
+                        error!("Failed to fetch play data after {} attempts: {}", MAX_POLL_ATTEMPTS, e);
+                    }
+                }
             }
         }
     }
@@ -354,8 +421,10 @@ impl Reflux {
             && let Some(handle) = &self.runtime_handle
         {
             let form = format_post_form(play_data, &self.config.remote_record.api_key);
+            let failed_count = Arc::clone(&self.failed_remote_count);
             handle.spawn(async move {
                 if let Err(e) = api.report_play(form).await {
+                    failed_count.fetch_add(1, Ordering::SeqCst);
                     tracing::error!("Failed to report play to remote: {}", e);
                 }
             });
@@ -785,8 +854,8 @@ impl Reflux {
 
             // Report progress for new songs
             if !new_songs.is_empty() && (i % 100 == 0 || i == self.game_data.song_db.len() - 1) {
-                let percent = (i as f64 / self.game_data.song_db.len() as f64) * 100.0;
-                info!("Sync progress: {:.1}%", percent);
+                let percent = (i * 100) / self.game_data.song_db.len();
+                info!("Sync progress: {}%", percent);
             }
 
             // Upload new songs
@@ -975,7 +1044,7 @@ impl Reflux {
         }
 
         // Create API client for update server
-        let api = RefluxApi::new(update_server.clone(), String::new());
+        let api = RefluxApi::new(update_server.clone(), String::new())?;
 
         let base = base_dir.as_ref();
         let mut result = UpdateResult::default();
