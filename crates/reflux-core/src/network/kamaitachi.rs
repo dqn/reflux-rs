@@ -82,6 +82,14 @@ impl KamaitachiClient {
 
         Ok(None)
     }
+
+    /// Get the Kamaitachi song ID for a given title
+    ///
+    /// This is useful for matching INFINITAS songs to Kamaitachi entries.
+    /// It uses progressive search to handle title differences.
+    pub async fn get_song_id(&self, title: &str) -> Result<Option<i32>> {
+        Ok(self.search_song_with_retry(title).await?.map(|s| s.id))
+    }
 }
 
 impl Default for KamaitachiClient {

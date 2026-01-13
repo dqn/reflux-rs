@@ -47,3 +47,65 @@ impl PlayData {
         }
     }
 }
+
+/// Calculate DJ Points for a given score and lamp
+///
+/// Formula:
+/// - C = (grade >= A ? 10 : 0) + max(0, grade - A) * 5
+/// - L = max(0, lamp - AC) * 5 + (lamp >= HC ? 5 : 0)
+/// - DJ Points = score * (100 + C + L) / 10000
+pub fn calculate_dj_points(ex_score: u32, grade: Grade, lamp: Lamp) -> f64 {
+    // Grade bonus: A=10, AA=15, AAA=20
+    let grade_val = grade as i32;
+    let grade_a_val = Grade::A as i32;
+    let c = if grade_val >= grade_a_val {
+        10 + (grade_val - grade_a_val).max(0) * 5
+    } else {
+        0
+    };
+
+    // Lamp bonus: NC/EC=5, HC=15, EX=20, FC=25, PFC=30
+    let lamp_val = lamp as i32;
+    let lamp_ac_val = Lamp::AssistClear as i32;
+    let lamp_hc_val = Lamp::HardClear as i32;
+    let l = (lamp_val - lamp_ac_val).max(0) * 5 + if lamp_val >= lamp_hc_val { 5 } else { 0 };
+
+    // DJ Points calculation
+    ex_score as f64 * (100 + c + l) as f64 / 10000.0
+}
+
+/// Calculate DJ Points from score and total notes
+pub fn calculate_dj_points_from_score(ex_score: u32, total_notes: u32, lamp: Lamp) -> f64 {
+    if total_notes == 0 {
+        return 0.0;
+    }
+
+    let grade = PlayData::calculate_grade(ex_score, total_notes);
+    calculate_dj_points(ex_score, grade, lamp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_dj_points() {
+        // AAA + PFC should give maximum bonus
+        let djp = calculate_dj_points(2000, Grade::Aaa, Lamp::Pfc);
+        // C = 10 + 2*5 = 20, L = 6*5 + 5 = 35
+        // DJ Points = 2000 * (100 + 20 + 35) / 10000 = 2000 * 155 / 10000 = 31.0
+        assert!((djp - 31.0).abs() < 0.01);
+
+        // A + Clear
+        let djp = calculate_dj_points(1000, Grade::A, Lamp::Clear);
+        // C = 10, L = 2*5 + 0 = 10
+        // DJ Points = 1000 * (100 + 10 + 10) / 10000 = 1000 * 120 / 10000 = 12.0
+        assert!((djp - 12.0).abs() < 0.01);
+
+        // B + Failed
+        let djp = calculate_dj_points(500, Grade::B, Lamp::Failed);
+        // C = 0, L = 0
+        // DJ Points = 500 * 100 / 10000 = 5.0
+        assert!((djp - 5.0).abs() < 0.01);
+    }
+}

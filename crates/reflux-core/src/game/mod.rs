@@ -1,4 +1,5 @@
 mod chart;
+mod encoding_fixes;
 mod enums;
 mod judge;
 mod play_data;
@@ -8,6 +9,7 @@ mod state;
 mod unlock;
 
 pub use chart::*;
+pub use encoding_fixes::*;
 pub use enums::*;
 pub use judge::*;
 pub use play_data::*;

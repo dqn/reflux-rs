@@ -1,4 +1,8 @@
-use crate::game::{Difficulty, UnlockType};
+use std::collections::HashMap;
+
+use crate::error::Result;
+use crate::game::{Difficulty, SongInfo, UnlockType};
+use crate::memory::MemoryReader;
 
 /// Unlock data structure from memory
 #[derive(Debug, Clone, Default)]
@@ -12,7 +16,7 @@ impl UnlockData {
     /// Size of unlock data structure in memory (32 bytes)
     pub const MEMORY_SIZE: usize = 32;
 
-    /// Check if a specific difficulty is unlocked
+    /// Check if a specific difficulty is unlocked (raw bit check)
     pub fn is_difficulty_unlocked(&self, difficulty: Difficulty) -> bool {
         let bit = 1 << (difficulty as i32);
         (self.unlocks & bit) != 0
@@ -40,5 +44,157 @@ impl UnlockData {
             unlock_type,
             unlocks,
         })
+    }
+}
+
+/// Load unlock states from memory for all songs
+pub fn get_unlock_states(
+    reader: &MemoryReader,
+    unlock_data_addr: u64,
+    song_count: usize,
+) -> Result<HashMap<String, UnlockData>> {
+    let mut result = HashMap::new();
+
+    // Read all unlock data at once
+    let buffer_size = UnlockData::MEMORY_SIZE * song_count;
+    let buffer = reader.read_bytes(unlock_data_addr, buffer_size)?;
+
+    let mut position = 0;
+    let extra_entries = 0;
+
+    while position < buffer.len() {
+        let chunk = &buffer[position..position.min(buffer.len()) + UnlockData::MEMORY_SIZE.min(buffer.len() - position)];
+        if chunk.len() < UnlockData::MEMORY_SIZE {
+            break;
+        }
+
+        if let Some(data) = UnlockData::from_bytes(chunk) {
+            // Stop at song_id 0
+            if data.song_id == 0 {
+                break;
+            }
+
+            let song_id = format!("{:05}", data.song_id);
+            result.insert(song_id, data);
+        }
+
+        position += UnlockData::MEMORY_SIZE;
+    }
+
+    // Handle extra entries (songs in unlock data but not in song db)
+    // This matches the original C# implementation
+    if extra_entries > 0 {
+        let extra_buffer = reader.read_bytes(
+            unlock_data_addr + position as u64,
+            UnlockData::MEMORY_SIZE * extra_entries,
+        )?;
+
+        let mut extra_pos = 0;
+        while extra_pos < extra_buffer.len() {
+            let chunk = &extra_buffer[extra_pos..];
+            if chunk.len() < UnlockData::MEMORY_SIZE {
+                break;
+            }
+
+            if let Some(data) = UnlockData::from_bytes(chunk) {
+                if data.song_id == 0 {
+                    break;
+                }
+
+                let song_id = format!("{:05}", data.song_id);
+                result.insert(song_id, data);
+            }
+
+            extra_pos += UnlockData::MEMORY_SIZE;
+        }
+    }
+
+    Ok(result)
+}
+
+/// Get unlock state for a specific difficulty, considering special cases
+///
+/// Special handling for:
+/// - SPB (Beginner): For non-Sub songs, check if note count is non-zero
+/// - SPL/DPL (Leggendaria): For Sub songs, requires both SPA and DPA to be unlocked
+pub fn get_unlock_state_for_difficulty(
+    unlock_db: &HashMap<String, UnlockData>,
+    song_db: &HashMap<String, SongInfo>,
+    song_id: &str,
+    difficulty: Difficulty,
+) -> bool {
+    let Some(unlock_data) = unlock_db.get(song_id) else {
+        return false;
+    };
+
+    let song_info = song_db.get(song_id);
+
+    // Handle Beginner difficulty specially
+    if difficulty == Difficulty::SpB {
+        if unlock_data.unlock_type == UnlockType::Sub {
+            // For Sub songs, use the unlock bit
+            return unlock_data.is_difficulty_unlocked(difficulty);
+        } else {
+            // For other songs, check if note count is non-zero
+            return song_info
+                .map(|s| s.total_notes[0] > 0)
+                .unwrap_or(false);
+        }
+    }
+
+    // Handle Leggendaria difficulties (SPL/DPL)
+    if difficulty == Difficulty::SpL || difficulty == Difficulty::DpL {
+        if unlock_data.unlock_type == UnlockType::Sub {
+            // For Sub songs, require both SPA and DPA to be unlocked
+            let spa_unlocked = unlock_data.is_difficulty_unlocked(Difficulty::SpA);
+            let dpa_unlocked = unlock_data.is_difficulty_unlocked(Difficulty::DpA);
+            return spa_unlocked && dpa_unlocked;
+        } else {
+            // For other songs, just check the unlock bit
+            return unlock_data.is_difficulty_unlocked(difficulty);
+        }
+    }
+
+    // Standard case: just check the unlock bit
+    unlock_data.is_difficulty_unlocked(difficulty)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_difficulty_unlocked() {
+        let unlock = UnlockData {
+            song_id: 1000,
+            unlock_type: UnlockType::Base,
+            unlocks: 0b11111, // SPB through SPL unlocked
+        };
+
+        assert!(unlock.is_difficulty_unlocked(Difficulty::SpB));
+        assert!(unlock.is_difficulty_unlocked(Difficulty::SpN));
+        assert!(unlock.is_difficulty_unlocked(Difficulty::SpH));
+        assert!(unlock.is_difficulty_unlocked(Difficulty::SpA));
+        assert!(unlock.is_difficulty_unlocked(Difficulty::SpL));
+        assert!(!unlock.is_difficulty_unlocked(Difficulty::DpN));
+    }
+
+    #[test]
+    fn test_from_bytes() {
+        let bytes = [
+            0xE8, 0x03, 0x00, 0x00, // song_id = 1000
+            0x01, 0x00, 0x00, 0x00, // unlock_type = Base
+            0x1F, 0x00, 0x00, 0x00, // unlocks = 0x1F
+            0x00, 0x00, 0x00, 0x00, // padding
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ];
+
+        let unlock = UnlockData::from_bytes(&bytes).unwrap();
+        assert_eq!(unlock.song_id, 1000);
+        assert_eq!(unlock.unlock_type, UnlockType::Base);
+        assert_eq!(unlock.unlocks, 0x1F);
     }
 }
