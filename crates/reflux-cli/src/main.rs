@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
 use reflux_core::{
-    export_song_list, fetch_song_database, load_offsets, Config, CustomTypes, MemoryReader,
-    ProcessHandle, Reflux, ScoreMap,
+    Config, CustomTypes, MemoryReader, ProcessHandle, Reflux, RefluxApi, ScoreMap,
+    export_song_list, fetch_song_database, load_offsets,
 };
 use std::path::PathBuf;
 use std::thread;
@@ -40,7 +40,22 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    info!("Reflux starting...");
+    // Print version and check for updates
+    let current_version = env!("CARGO_PKG_VERSION");
+    info!("Reflux-RS {}", current_version);
+
+    // Check for newer version
+    match RefluxApi::get_latest_version().await {
+        Ok(latest) => {
+            let latest_clean = latest.trim_start_matches('v');
+            if version_is_newer(latest_clean, current_version) {
+                warn!("Newer version {} is available.", latest);
+            }
+        }
+        Err(e) => {
+            warn!("Failed to check for updates: {}", e);
+        }
+    }
 
     // Load config
     let config = match Config::load(&args.config) {
@@ -131,17 +146,20 @@ async fn main() -> Result<()> {
 
                 // Load score map from game memory
                 info!("Loading score map...");
-                let score_map =
-                    match ScoreMap::load_from_memory(&reader, reflux.offsets().data_map, &song_db) {
-                        Ok(map) => {
-                            info!("Loaded {} score entries", map.len());
-                            map
-                        }
-                        Err(e) => {
-                            warn!("Failed to load score map: {}", e);
-                            ScoreMap::new()
-                        }
-                    };
+                let score_map = match ScoreMap::load_from_memory(
+                    &reader,
+                    reflux.offsets().data_map,
+                    &song_db,
+                ) {
+                    Ok(map) => {
+                        info!("Loaded {} score entries", map.len());
+                        map
+                    }
+                    Err(e) => {
+                        warn!("Failed to load score map: {}", e);
+                        ScoreMap::new()
+                    }
+                };
                 reflux.set_score_map(score_map);
 
                 // Load custom types
@@ -199,4 +217,27 @@ async fn main() -> Result<()> {
 
         thread::sleep(Duration::from_secs(5));
     }
+}
+
+/// Compare semantic versions to check if latest is newer than current
+fn version_is_newer(latest: &str, current: &str) -> bool {
+    let parse_version =
+        |s: &str| -> Vec<u32> { s.split('.').filter_map(|part| part.parse().ok()).collect() };
+
+    let latest_parts = parse_version(latest);
+    let current_parts = parse_version(current);
+
+    for i in 0..latest_parts.len().max(current_parts.len()) {
+        let latest_num = latest_parts.get(i).copied().unwrap_or(0);
+        let current_num = current_parts.get(i).copied().unwrap_or(0);
+
+        if latest_num > current_num {
+            return true;
+        }
+        if latest_num < current_num {
+            return false;
+        }
+    }
+
+    false
 }
