@@ -418,26 +418,27 @@ fn generate_tracker_entry(
 
     // Difficulty columns
     let difficulties = [
-        (0, Difficulty::SpB),
-        (1, Difficulty::SpN),
-        (2, Difficulty::SpH),
-        (3, Difficulty::SpA),
-        (4, Difficulty::SpL),
-        (5, Difficulty::DpN),
-        (6, Difficulty::DpH),
-        (7, Difficulty::DpA),
-        (8, Difficulty::DpL),
+        Difficulty::SpB,
+        Difficulty::SpN,
+        Difficulty::SpH,
+        Difficulty::SpA,
+        Difficulty::SpL,
+        Difficulty::DpN,
+        Difficulty::DpH,
+        Difficulty::DpA,
+        Difficulty::DpL,
     ];
 
     let mut chart_data = Vec::new();
-    for (idx, diff) in &difficulties {
+    for diff in &difficulties {
+        let diff_index = *diff as usize;
         let unlocked = get_unlock_state_for_difficulty(unlock_db, song_db, song_id, *diff);
-        let level = song.levels[*idx];
-        let total_notes = song.total_notes[*idx];
+        let level = song.levels[diff_index];
+        let total_notes = song.total_notes[diff_index];
 
         let (lamp, grade, ex_score, miss_count, djp) = if let Some(s) = scores {
-            let lamp = s.lamp[*idx];
-            let ex_score = s.score[*idx];
+            let lamp = s.lamp[diff_index];
+            let ex_score = s.score[diff_index];
             let grade = if total_notes > 0 {
                 crate::game::PlayData::calculate_grade(ex_score, total_notes)
             } else {
@@ -448,14 +449,14 @@ fn generate_tracker_entry(
             } else {
                 0.0
             };
-            let miss_count = s.miss_count[*idx];
+            let miss_count = s.miss_count[diff_index];
             (lamp, grade, ex_score, miss_count, djp)
         } else {
             (Lamp::NoPlay, Grade::NoPlay, 0, None, 0.0)
         };
 
         // Track max DJ points for SP/DP
-        if *idx < 5 {
+        if diff.is_sp() {
             sp_djp = sp_djp.max(djp);
         } else {
             dp_djp = dp_djp.max(djp);

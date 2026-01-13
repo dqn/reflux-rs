@@ -51,65 +51,64 @@ impl UnlockData {
 pub fn get_unlock_states(
     reader: &MemoryReader,
     unlock_data_addr: u64,
-    song_count: usize,
+    song_db: &HashMap<String, SongInfo>,
 ) -> Result<HashMap<String, UnlockData>> {
     let mut result = HashMap::new();
 
-    // Read all unlock data at once
-    let buffer_size = UnlockData::MEMORY_SIZE * song_count;
-    let buffer = reader.read_bytes(unlock_data_addr, buffer_size)?;
+    let song_count = song_db.len();
+    if song_count == 0 {
+        return Ok(result);
+    }
 
-    let mut position = 0;
-    let extra_entries = 0;
+    let mut position_entries = 0usize;
+    let mut batch_entries = song_count;
 
-    while position < buffer.len() {
-        let chunk = &buffer[position..position.min(buffer.len()) + UnlockData::MEMORY_SIZE.min(buffer.len() - position)];
-        if chunk.len() < UnlockData::MEMORY_SIZE {
+    loop {
+        let buffer_size = UnlockData::MEMORY_SIZE * batch_entries;
+        let buffer = reader.read_bytes(
+            unlock_data_addr + (position_entries * UnlockData::MEMORY_SIZE) as u64,
+            buffer_size,
+        )?;
+
+        let extra_entries = parse_unlock_buffer(&buffer, song_db, &mut result);
+        if extra_entries == 0 {
             break;
         }
 
+        position_entries += batch_entries;
+        batch_entries = extra_entries;
+    }
+
+    Ok(result)
+}
+
+fn parse_unlock_buffer(
+    buffer: &[u8],
+    song_db: &HashMap<String, SongInfo>,
+    result: &mut HashMap<String, UnlockData>,
+) -> usize {
+    let mut position = 0;
+    let mut extra_entries = 0;
+
+    while position + UnlockData::MEMORY_SIZE <= buffer.len() {
+        let chunk = &buffer[position..position + UnlockData::MEMORY_SIZE];
+
         if let Some(data) = UnlockData::from_bytes(chunk) {
-            // Stop at song_id 0
             if data.song_id == 0 {
                 break;
             }
 
             let song_id = format!("{:05}", data.song_id);
+            if !song_db.contains_key(&song_id) {
+                extra_entries += 1;
+            }
             result.insert(song_id, data);
         }
 
         position += UnlockData::MEMORY_SIZE;
     }
 
-    // Handle extra entries (songs in unlock data but not in song db)
-    // This matches the original C# implementation
-    if extra_entries > 0 {
-        let extra_buffer = reader.read_bytes(
-            unlock_data_addr + position as u64,
-            UnlockData::MEMORY_SIZE * extra_entries,
-        )?;
-
-        let mut extra_pos = 0;
-        while extra_pos < extra_buffer.len() {
-            let chunk = &extra_buffer[extra_pos..];
-            if chunk.len() < UnlockData::MEMORY_SIZE {
-                break;
-            }
-
-            if let Some(data) = UnlockData::from_bytes(chunk) {
-                if data.song_id == 0 {
-                    break;
-                }
-
-                let song_id = format!("{:05}", data.song_id);
-                result.insert(song_id, data);
-            }
-
-            extra_pos += UnlockData::MEMORY_SIZE;
-        }
-    }
-
-    Ok(result)
+    extra_entries
 }
 
 /// Get unlock state for a specific difficulty, considering special cases
@@ -169,10 +168,10 @@ pub fn update_unlock_states(
     reader: &MemoryReader,
     old_state: &HashMap<String, UnlockData>,
     unlock_data_addr: u64,
-    song_count: usize,
+    song_db: &HashMap<String, SongInfo>,
 ) -> Result<HashMap<String, UnlockData>> {
     // Get current state from memory
-    let current_state = get_unlock_states(reader, unlock_data_addr, song_count)?;
+    let current_state = get_unlock_states(reader, unlock_data_addr, song_db)?;
 
     let mut changes = HashMap::new();
 

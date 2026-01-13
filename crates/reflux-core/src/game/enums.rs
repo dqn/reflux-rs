@@ -8,10 +8,11 @@ pub enum Difficulty {
     SpH = 2,
     SpA = 3,
     SpL = 4,
-    DpN = 5,
-    DpH = 6,
-    DpA = 7,
-    DpL = 8,
+    DpB = 5,
+    DpN = 6,
+    DpH = 7,
+    DpA = 8,
+    DpL = 9,
 }
 
 impl Difficulty {
@@ -22,10 +23,11 @@ impl Difficulty {
             2 => Some(Self::SpH),
             3 => Some(Self::SpA),
             4 => Some(Self::SpL),
-            5 => Some(Self::DpN),
-            6 => Some(Self::DpH),
-            7 => Some(Self::DpA),
-            8 => Some(Self::DpL),
+            5 => Some(Self::DpB),
+            6 => Some(Self::DpN),
+            7 => Some(Self::DpH),
+            8 => Some(Self::DpA),
+            9 => Some(Self::DpL),
             _ => None,
         }
     }
@@ -48,6 +50,7 @@ impl Difficulty {
             Self::SpH => "SPH",
             Self::SpA => "SPA",
             Self::SpL => "SPL",
+            Self::DpB => "DPB",
             Self::DpN => "DPN",
             Self::DpH => "DPH",
             Self::DpA => "DPA",
@@ -59,6 +62,7 @@ impl Difficulty {
     pub fn expand_name(&self) -> &'static str {
         match self {
             Self::SpB => "BEGINNER",
+            Self::DpB => "BEGINNER",
             Self::SpN | Self::DpN => "NORMAL",
             Self::SpH | Self::DpH => "HYPER",
             Self::SpA | Self::DpA => "ANOTHER",
@@ -69,7 +73,7 @@ impl Difficulty {
     /// Get the color code for difficulty (for OBS output)
     pub fn color_code(&self) -> &'static str {
         match self {
-            Self::SpB => "#32CD32", // Green for beginner
+            Self::SpB | Self::DpB => "#32CD32", // Green for beginner
             Self::SpN | Self::DpN => "#0FABFD", // Blue for normal
             Self::SpH | Self::DpH => "#F4903C", // Orange for hyper
             Self::SpA | Self::DpA => "#E52B19", // Red for another
@@ -261,8 +265,9 @@ mod tests {
     fn test_difficulty_from_u8() {
         assert_eq!(Difficulty::from_u8(0), Some(Difficulty::SpB));
         assert_eq!(Difficulty::from_u8(4), Some(Difficulty::SpL));
-        assert_eq!(Difficulty::from_u8(8), Some(Difficulty::DpL));
-        assert_eq!(Difficulty::from_u8(9), None);
+        assert_eq!(Difficulty::from_u8(5), Some(Difficulty::DpB));
+        assert_eq!(Difficulty::from_u8(9), Some(Difficulty::DpL));
+        assert_eq!(Difficulty::from_u8(10), None);
     }
 
     #[test]

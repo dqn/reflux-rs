@@ -322,13 +322,13 @@ impl Reflux {
             return;
         }
 
-        let song_count = self.song_db.len();
-        if song_count == 0 {
+        if self.song_db.is_empty() {
             return;
         }
 
         // Read current unlock state
-        let current_state = match get_unlock_states(reader, self.offsets.unlock_data, song_count) {
+        let current_state =
+            match get_unlock_states(reader, self.offsets.unlock_data, &self.song_db) {
             Ok(state) => state,
             Err(e) => {
                 error!("Failed to read unlock state: {}", e);
@@ -604,13 +604,12 @@ impl Reflux {
 
     /// Load current unlock state from memory
     pub fn load_unlock_state(&mut self, reader: &MemoryReader) -> Result<()> {
-        let song_count = self.song_db.len();
-        if song_count == 0 {
+        if self.song_db.is_empty() {
             warn!("Song database is empty, cannot load unlock state");
             return Ok(());
         }
 
-        self.unlock_state = get_unlock_states(reader, self.offsets.unlock_data, song_count)?;
+        self.unlock_state = get_unlock_states(reader, self.offsets.unlock_data, &self.song_db)?;
         info!("Loaded unlock state from memory ({} entries)", self.unlock_state.len());
         Ok(())
     }
@@ -730,7 +729,7 @@ impl Reflux {
             return Ok(());
         }
 
-        // Add charts for each difficulty (skip SPB=0 and DPN=5)
+        // Add charts for each difficulty (skip SPB=0 and DPB=5)
         for diff_idx in [1, 2, 3, 4, 6, 7, 8, 9] {
             let level = song.levels.get(diff_idx).copied().unwrap_or(0);
             if level == 0 {
