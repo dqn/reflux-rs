@@ -54,6 +54,28 @@ impl Difficulty {
             Self::DpL => "DPL",
         }
     }
+
+    /// Get the expanded difficulty name (e.g., "NORMAL", "HYPER")
+    pub fn expand_name(&self) -> &'static str {
+        match self {
+            Self::SpB => "BEGINNER",
+            Self::SpN | Self::DpN => "NORMAL",
+            Self::SpH | Self::DpH => "HYPER",
+            Self::SpA | Self::DpA => "ANOTHER",
+            Self::SpL | Self::DpL => "LEGGENDARIA",
+        }
+    }
+
+    /// Get the color code for difficulty (for OBS output)
+    pub fn color_code(&self) -> &'static str {
+        match self {
+            Self::SpB => "#32CD32", // Green for beginner
+            Self::SpN | Self::DpN => "#0FABFD", // Blue for normal
+            Self::SpH | Self::DpH => "#F4903C", // Orange for hyper
+            Self::SpA | Self::DpA => "#E52B19", // Red for another
+            Self::SpL | Self::DpL => "#9B30FF", // Purple for leggendaria
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
@@ -98,6 +120,20 @@ impl Lamp {
             Self::ExHardClear => "EX HARD",
             Self::FullCombo => "FC",
             Self::Pfc => "PFC",
+        }
+    }
+
+    /// Get the expanded lamp name (for display and export)
+    pub fn expand_name(&self) -> &'static str {
+        match self {
+            Self::NoPlay => "NO PLAY",
+            Self::Failed => "FAILED",
+            Self::AssistClear => "ASSIST CLEAR",
+            Self::EasyClear => "EASY CLEAR",
+            Self::Clear => "CLEAR",
+            Self::HardClear => "HARD CLEAR",
+            Self::ExHardClear => "EX HARD CLEAR",
+            Self::FullCombo | Self::Pfc => "FULL COMBO",
         }
     }
 }

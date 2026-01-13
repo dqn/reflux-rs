@@ -159,6 +159,56 @@ pub fn get_unlock_state_for_difficulty(
     unlock_data.is_difficulty_unlocked(difficulty)
 }
 
+/// Compare old and new unlock states and return only changed entries
+///
+/// This function:
+/// 1. Reads current unlock states from memory
+/// 2. Compares with previous states
+/// 3. Returns only entries where `unlocks` value has changed
+pub fn update_unlock_states(
+    reader: &MemoryReader,
+    old_state: &HashMap<String, UnlockData>,
+    unlock_data_addr: u64,
+    song_count: usize,
+) -> Result<HashMap<String, UnlockData>> {
+    // Get current state from memory
+    let current_state = get_unlock_states(reader, unlock_data_addr, song_count)?;
+
+    let mut changes = HashMap::new();
+
+    for (song_id, current_data) in &current_state {
+        if let Some(old_data) = old_state.get(song_id) {
+            // Check if unlock state changed
+            if current_data.unlocks != old_data.unlocks {
+                changes.insert(song_id.clone(), current_data.clone());
+            }
+        }
+        // Note: New songs not in old_state are not considered "changes"
+        // They should be handled by the server sync logic
+    }
+
+    Ok(changes)
+}
+
+/// Detect unlock state changes without re-reading from memory
+/// (for use when you already have the new state)
+pub fn detect_unlock_changes(
+    old_state: &HashMap<String, UnlockData>,
+    new_state: &HashMap<String, UnlockData>,
+) -> HashMap<String, UnlockData> {
+    let mut changes = HashMap::new();
+
+    for (song_id, new_data) in new_state {
+        if let Some(old_data) = old_state.get(song_id) {
+            if new_data.unlocks != old_data.unlocks {
+                changes.insert(song_id.clone(), new_data.clone());
+            }
+        }
+    }
+
+    changes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

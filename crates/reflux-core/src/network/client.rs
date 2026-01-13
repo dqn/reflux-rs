@@ -3,6 +3,7 @@ use reqwest::Client;
 use std::collections::HashMap;
 use std::time::Duration;
 
+#[derive(Clone)]
 pub struct HttpClient {
     client: Client,
     base_url: String,

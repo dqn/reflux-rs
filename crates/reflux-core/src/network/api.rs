@@ -20,6 +20,7 @@ pub struct AddSongParams<'a> {
     pub unlock_type: u8,
 }
 
+#[derive(Clone)]
 pub struct RefluxApi {
     client: HttpClient,
     update_server: String,

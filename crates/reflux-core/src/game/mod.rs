@@ -1,4 +1,5 @@
 mod chart;
+mod custom_types;
 mod encoding_fixes;
 mod enums;
 mod judge;
@@ -7,8 +8,10 @@ mod settings;
 mod song;
 mod state;
 mod unlock;
+mod version;
 
 pub use chart::*;
+pub use custom_types::*;
 pub use encoding_fixes::*;
 pub use enums::*;
 pub use judge::*;
@@ -17,3 +20,4 @@ pub use settings::*;
 pub use song::*;
 pub use state::*;
 pub use unlock::*;
+pub use version::*;
