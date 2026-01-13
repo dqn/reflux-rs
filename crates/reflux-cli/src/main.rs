@@ -1,6 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
-use reflux_core::{load_offsets, Config, ProcessHandle, Reflux};
+use reflux_core::{
+    fetch_song_database, load_offsets, Config, MemoryReader, ProcessHandle, Reflux, ScoreMap,
+};
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -24,7 +26,8 @@ struct Args {
     tracker: PathBuf,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -81,8 +84,80 @@ fn main() -> Result<()> {
                     process.base_address
                 );
 
+                // Create memory reader
+                let reader = MemoryReader::new(&process);
+
+                // Check game version
+                match reflux.check_game_version(&reader, process.base_address) {
+                    Ok((Some(version), matches)) => {
+                        info!("Game version: {}", version);
+                        if !matches {
+                            warn!("Offsets version mismatch, attempting update...");
+                            if let Err(e) = reflux.update_support_files(&version, ".").await {
+                                warn!("Failed to update support files: {}", e);
+                            }
+                        }
+                    }
+                    Ok((None, _)) => {
+                        warn!("Could not detect game version");
+                    }
+                    Err(e) => {
+                        warn!("Failed to check game version: {}", e);
+                    }
+                }
+
+                // Load song database from game memory
+                info!("Loading song database...");
+                let song_db = match fetch_song_database(&reader, reflux.offsets().song_list) {
+                    Ok(db) => {
+                        info!("Loaded {} songs", db.len());
+                        db
+                    }
+                    Err(e) => {
+                        warn!("Failed to load song database: {}", e);
+                        std::collections::HashMap::new()
+                    }
+                };
+                reflux.set_song_db(song_db.clone());
+
+                // Load score map from game memory
+                info!("Loading score map...");
+                let _score_map =
+                    match ScoreMap::load_from_memory(&reader, reflux.offsets().data_map, &song_db) {
+                        Ok(map) => {
+                            info!("Loaded {} score entries", map.len());
+                            map
+                        }
+                        Err(e) => {
+                            warn!("Failed to load score map: {}", e);
+                            ScoreMap::new()
+                        }
+                    };
+
+                // Load unlock database
+                if let Err(e) = reflux.load_unlock_db("unlockdb") {
+                    warn!("Failed to load unlock db: {}", e);
+                }
+                if let Err(e) = reflux.load_unlock_state(&reader) {
+                    warn!("Failed to load unlock state: {}", e);
+                }
+
+                // Sync with server
+                if reflux.config().record.save_remote {
+                    info!("Syncing with server...");
+                    if let Err(e) = reflux.sync_with_server().await {
+                        warn!("Server sync failed: {}", e);
+                    }
+                }
+
+                // Run tracker loop
                 if let Err(e) = reflux.run(&process) {
                     error!("Tracker error: {}", e);
+                }
+
+                // Save unlock database on disconnect
+                if let Err(e) = reflux.save_unlock_db("unlockdb") {
+                    error!("Failed to save unlock db: {}", e);
                 }
 
                 // Save tracker on disconnect
