@@ -175,7 +175,7 @@ pub fn format_post_form(play_data: &PlayData, api_key: &str) -> HashMap<String, 
     let mut form = HashMap::new();
 
     form.insert("apikey".to_string(), api_key.to_string());
-    form.insert("songid".to_string(), play_data.chart.song_id.clone());
+    form.insert("songid".to_string(), format!("{:05}", play_data.chart.song_id));
     form.insert("title".to_string(), play_data.chart.title.clone());
     form.insert("title2".to_string(), play_data.chart.title_english.clone());
     form.insert("bpm".to_string(), play_data.chart.bpm.clone());
@@ -288,7 +288,7 @@ pub fn format_tsv_row(data: &TsvRowData) -> String {
 #[derive(Debug, Clone, Serialize)]
 pub struct PlayDataJson {
     pub timestamp: String,
-    pub song_id: String,
+    pub song_id: u32,
     pub title: String,
     pub difficulty: String,
     pub level: u8,
@@ -345,18 +345,18 @@ pub fn format_tracker_tsv_header() -> String {
 pub fn export_tracker_tsv<P: AsRef<Path>>(
     path: P,
     _tracker: &Tracker,
-    song_db: &HashMap<String, SongInfo>,
-    unlock_db: &HashMap<String, UnlockData>,
+    song_db: &HashMap<u32, SongInfo>,
+    unlock_db: &HashMap<u32, UnlockData>,
     score_map: &ScoreMap,
-    custom_types: &HashMap<String, String>,
+    custom_types: &HashMap<u32, String>,
 ) -> Result<()> {
     let mut lines = vec![format_tracker_tsv_header()];
 
     // Get all song IDs from song database (sorted)
-    let mut song_ids: Vec<&String> = song_db.keys().collect();
+    let mut song_ids: Vec<&u32> = song_db.keys().collect();
     song_ids.sort();
 
-    for song_id in song_ids {
+    for &song_id in song_ids {
         if let Some(entry) =
             generate_tracker_entry(song_id, song_db, unlock_db, score_map, custom_types)
         {
@@ -369,14 +369,14 @@ pub fn export_tracker_tsv<P: AsRef<Path>>(
 }
 
 fn generate_tracker_entry(
-    song_id: &str,
-    song_db: &HashMap<String, SongInfo>,
-    unlock_db: &HashMap<String, UnlockData>,
+    song_id: u32,
+    song_db: &HashMap<u32, SongInfo>,
+    unlock_db: &HashMap<u32, UnlockData>,
     score_map: &ScoreMap,
-    custom_types: &HashMap<String, String>,
+    custom_types: &HashMap<u32, String>,
 ) -> Option<String> {
-    let song = song_db.get(song_id)?;
-    let unlock = unlock_db.get(song_id)?;
+    let song = song_db.get(&song_id)?;
+    let unlock = unlock_db.get(&song_id)?;
     let scores = score_map.get(song_id);
 
     let mut columns = Vec::new();
@@ -393,7 +393,7 @@ fn generate_tracker_entry(
     columns.push(type_name.to_string());
 
     let label = custom_types
-        .get(song_id)
+        .get(&song_id)
         .cloned()
         .unwrap_or_else(|| type_name.to_string());
     columns.push(label);
@@ -401,7 +401,7 @@ fn generate_tracker_entry(
     // Bit costs (for N, H, A)
     for i in [1, 2, 3] {
         // SPN, SPH, SPA indices
-        let cost = if unlock.unlock_type == UnlockType::Bits && !custom_types.contains_key(song_id)
+        let cost = if unlock.unlock_type == UnlockType::Bits && !custom_types.contains_key(&song_id)
         {
             let sp_level = song.levels[i] as i32;
             let dp_level = song.levels[i + 5] as i32; // DPN, DPH, DPA
@@ -515,18 +515,18 @@ fn generate_tracker_entry(
 /// Useful for checking encoding issues
 pub fn export_song_list<P: AsRef<Path>>(
     path: P,
-    song_db: &HashMap<String, SongInfo>,
+    song_db: &HashMap<u32, SongInfo>,
 ) -> Result<()> {
     let mut lines = vec!["id\ttitle\ttitle2\tartist\tgenre".to_string()];
 
     // Sort by song ID
-    let mut song_ids: Vec<&String> = song_db.keys().collect();
+    let mut song_ids: Vec<&u32> = song_db.keys().collect();
     song_ids.sort();
 
-    for song_id in song_ids {
-        if let Some(song) = song_db.get(song_id) {
+    for &song_id in song_ids {
+        if let Some(song) = song_db.get(&song_id) {
             lines.push(format!(
-                "{}\t{}\t{}\t{}\t{}",
+                "{:05}\t{}\t{}\t{}\t{}",
                 song_id, song.title, song.title_english, song.artist, song.genre
             ));
         }

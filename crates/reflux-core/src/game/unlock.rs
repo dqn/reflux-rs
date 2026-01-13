@@ -7,7 +7,7 @@ use crate::memory::MemoryReader;
 /// Unlock data structure from memory
 #[derive(Debug, Clone, Default)]
 pub struct UnlockData {
-    pub song_id: i32,
+    pub song_id: u32,
     pub unlock_type: UnlockType,
     pub unlocks: i32, // Bitmask of unlocked difficulties
 }
@@ -28,7 +28,7 @@ impl UnlockData {
             return None;
         }
 
-        let song_id = i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        let song_id = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
         let unlock_type_val = i32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
         let unlocks = i32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
 
@@ -51,8 +51,8 @@ impl UnlockData {
 pub fn get_unlock_states(
     reader: &MemoryReader,
     unlock_data_addr: u64,
-    song_db: &HashMap<String, SongInfo>,
-) -> Result<HashMap<String, UnlockData>> {
+    song_db: &HashMap<u32, SongInfo>,
+) -> Result<HashMap<u32, UnlockData>> {
     let mut result = HashMap::new();
 
     let song_count = song_db.len();
@@ -84,8 +84,8 @@ pub fn get_unlock_states(
 
 fn parse_unlock_buffer(
     buffer: &[u8],
-    song_db: &HashMap<String, SongInfo>,
-    result: &mut HashMap<String, UnlockData>,
+    song_db: &HashMap<u32, SongInfo>,
+    result: &mut HashMap<u32, UnlockData>,
 ) -> usize {
     let mut position = 0;
     let mut extra_entries = 0;
@@ -98,11 +98,10 @@ fn parse_unlock_buffer(
                 break;
             }
 
-            let song_id = format!("{:05}", data.song_id);
-            if !song_db.contains_key(&song_id) {
+            if !song_db.contains_key(&data.song_id) {
                 extra_entries += 1;
             }
-            result.insert(song_id, data);
+            result.insert(data.song_id, data);
         }
 
         position += UnlockData::MEMORY_SIZE;
@@ -117,16 +116,16 @@ fn parse_unlock_buffer(
 /// - SPB (Beginner): For non-Sub songs, check if note count is non-zero
 /// - SPL/DPL (Leggendaria): For Sub songs, requires both SPA and DPA to be unlocked
 pub fn get_unlock_state_for_difficulty(
-    unlock_db: &HashMap<String, UnlockData>,
-    song_db: &HashMap<String, SongInfo>,
-    song_id: &str,
+    unlock_db: &HashMap<u32, UnlockData>,
+    song_db: &HashMap<u32, SongInfo>,
+    song_id: u32,
     difficulty: Difficulty,
 ) -> bool {
-    let Some(unlock_data) = unlock_db.get(song_id) else {
+    let Some(unlock_data) = unlock_db.get(&song_id) else {
         return false;
     };
 
-    let song_info = song_db.get(song_id);
+    let song_info = song_db.get(&song_id);
 
     // Handle Beginner difficulty specially
     if difficulty == Difficulty::SpB {
@@ -164,20 +163,20 @@ pub fn get_unlock_state_for_difficulty(
 /// 3. Returns only entries where `unlocks` value has changed
 pub fn update_unlock_states(
     reader: &MemoryReader,
-    old_state: &HashMap<String, UnlockData>,
+    old_state: &HashMap<u32, UnlockData>,
     unlock_data_addr: u64,
-    song_db: &HashMap<String, SongInfo>,
-) -> Result<HashMap<String, UnlockData>> {
+    song_db: &HashMap<u32, SongInfo>,
+) -> Result<HashMap<u32, UnlockData>> {
     // Get current state from memory
     let current_state = get_unlock_states(reader, unlock_data_addr, song_db)?;
 
     let mut changes = HashMap::new();
 
-    for (song_id, current_data) in &current_state {
-        if let Some(old_data) = old_state.get(song_id) {
+    for (&song_id, current_data) in &current_state {
+        if let Some(old_data) = old_state.get(&song_id) {
             // Check if unlock state changed
             if current_data.unlocks != old_data.unlocks {
-                changes.insert(song_id.clone(), current_data.clone());
+                changes.insert(song_id, current_data.clone());
             }
         }
         // Note: New songs not in old_state are not considered "changes"
@@ -190,16 +189,16 @@ pub fn update_unlock_states(
 /// Detect unlock state changes without re-reading from memory
 /// (for use when you already have the new state)
 pub fn detect_unlock_changes(
-    old_state: &HashMap<String, UnlockData>,
-    new_state: &HashMap<String, UnlockData>,
-) -> HashMap<String, UnlockData> {
+    old_state: &HashMap<u32, UnlockData>,
+    new_state: &HashMap<u32, UnlockData>,
+) -> HashMap<u32, UnlockData> {
     let mut changes = HashMap::new();
 
-    for (song_id, new_data) in new_state {
-        if let Some(old_data) = old_state.get(song_id)
+    for (&song_id, new_data) in new_state {
+        if let Some(old_data) = old_state.get(&song_id)
             && new_data.unlocks != old_data.unlocks
         {
-            changes.insert(song_id.clone(), new_data.clone());
+            changes.insert(song_id, new_data.clone());
         }
     }
 

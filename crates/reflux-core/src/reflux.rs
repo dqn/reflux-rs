@@ -86,13 +86,13 @@ use crate::stream::StreamOutput;
 /// Game data loaded from memory and files
 pub struct GameData {
     /// Song database loaded from game memory
-    pub song_db: HashMap<String, SongInfo>,
+    pub song_db: HashMap<u32, SongInfo>,
     /// Score map from game memory
     pub score_map: ScoreMap,
     /// Current unlock state from memory
-    pub unlock_state: HashMap<String, UnlockData>,
+    pub unlock_state: HashMap<u32, UnlockData>,
     /// Custom unlock types from customtypes.txt
-    pub custom_types: HashMap<String, String>,
+    pub custom_types: HashMap<u32, String>,
 }
 
 impl GameData {
@@ -166,7 +166,7 @@ impl Reflux {
     }
 
     /// Set custom types
-    pub fn set_custom_types(&mut self, custom_types: HashMap<String, String>) {
+    pub fn set_custom_types(&mut self, custom_types: HashMap<u32, String>) {
         self.game_data.custom_types = custom_types;
     }
 
@@ -328,19 +328,18 @@ impl Reflux {
 
     /// Save play data to session files (TSV and JSON)
     fn save_session_data(&mut self, play_data: &PlayData) {
-        if self.config.record.save_local {
-            if let Err(e) = self
+        if self.config.record.save_local
+            && let Err(e) = self
                 .session_manager
                 .append_tsv_row(play_data, &self.config.local_record)
-            {
-                error!("Failed to append TSV row: {}", e);
-            }
+        {
+            error!("Failed to append TSV row: {}", e);
         }
 
-        if self.config.record.save_json {
-            if let Err(e) = self.session_manager.append_json_entry(play_data) {
-                error!("Failed to append JSON entry: {}", e);
-            }
+        if self.config.record.save_json
+            && let Err(e) = self.session_manager.append_json_entry(play_data)
+        {
+            error!("Failed to append JSON entry: {}", e);
         }
     }
 
@@ -480,16 +479,16 @@ impl Reflux {
             info!("Detected {} unlock state changes", changes.len());
 
             // Report changes to server
-            for (song_id, unlock_data) in &changes {
+            for (&song_id, unlock_data) in &changes {
                 if let Some(api) = &self.api
                     && let Some(handle) = &self.runtime_handle
                 {
                     let api_clone = api.clone();
-                    let song_id_clone = song_id.clone();
+                    let song_id_str = format!("{:05}", song_id);
                     let unlocks = unlock_data.unlocks;
                     handle.spawn(async move {
-                        if let Err(e) = api_clone.report_unlock(&song_id_clone, unlocks).await {
-                            tracing::error!("Failed to report unlock for {}: {}", song_id_clone, e);
+                        if let Err(e) = api_clone.report_unlock(&song_id_str, unlocks).await {
+                            tracing::error!("Failed to report unlock for {}: {}", song_id_str, e);
                         }
                     });
                 }
@@ -503,24 +502,22 @@ impl Reflux {
         self.game_data.unlock_state = current_state;
     }
 
-    fn fetch_current_chart(&self, reader: &MemoryReader) -> Result<(String, Difficulty)> {
-        let song_id = reader.read_i32(self.offsets.current_song)?;
+    fn fetch_current_chart(&self, reader: &MemoryReader) -> Result<(u32, Difficulty)> {
+        let song_id = reader.read_i32(self.offsets.current_song)? as u32;
         let diff = reader.read_i32(self.offsets.current_song + 4)?;
 
-        let song_id_str = format!("{:05}", song_id);
         let difficulty = Difficulty::from_u8(diff as u8).unwrap_or(Difficulty::SpN);
 
-        Ok((song_id_str, difficulty))
+        Ok((song_id, difficulty))
     }
 
     fn fetch_play_data(&self, reader: &MemoryReader) -> Result<PlayData> {
         // Read basic play data
-        let song_id = reader.read_i32(self.offsets.play_data + play_offsets::SONG_ID)?;
+        let song_id = reader.read_i32(self.offsets.play_data + play_offsets::SONG_ID)? as u32;
         let difficulty_val =
             reader.read_i32(self.offsets.play_data + play_offsets::DIFFICULTY)?;
         let lamp_val = reader.read_i32(self.offsets.play_data + play_offsets::LAMP)?;
 
-        let song_id_str = format!("{:05}", song_id);
         let difficulty = Difficulty::from_u8(difficulty_val as u8).unwrap_or(Difficulty::SpN);
         let mut lamp = Lamp::from_u8(lamp_val as u8).unwrap_or(Lamp::NoPlay);
 
@@ -539,14 +536,14 @@ impl Reflux {
         let settings = self.fetch_settings(reader, judge.play_type)?;
 
         // Get or create chart info
-        let chart = if let Some(song) = self.game_data.song_db.get(&song_id_str) {
+        let chart = if let Some(song) = self.game_data.song_db.get(&song_id) {
             ChartInfo::from_song_info(song, difficulty, true)
         } else {
             // Create minimal chart info
             ChartInfo {
-                song_id: song_id_str.clone(),
-                title: format!("Song {}", song_id_str),
-                title_english: format!("Song {}", song_id_str),
+                song_id,
+                title: format!("Song {:05}", song_id),
+                title_english: format!("Song {:05}", song_id),
                 artist: String::new(),
                 genre: String::new(),
                 bpm: String::new(),
@@ -680,11 +677,8 @@ impl Reflux {
     fn update_tracker(&mut self, play_data: &PlayData) {
         use crate::storage::ChartKey;
 
-        // Parse song_id as u32
-        let song_id: u32 = play_data.chart.song_id.parse().unwrap_or(0);
-
         let key = ChartKey {
-            song_id,
+            song_id: play_data.chart.song_id,
             difficulty: play_data.chart.difficulty,
         };
 
@@ -704,7 +698,7 @@ impl Reflux {
     }
 
     /// Set song database
-    pub fn set_song_db(&mut self, song_db: HashMap<String, SongInfo>) {
+    pub fn set_song_db(&mut self, song_db: HashMap<u32, SongInfo>) {
         self.game_data.song_db = song_db;
     }
 
@@ -770,16 +764,16 @@ impl Reflux {
             .game_data
             .song_db
             .keys()
-            .filter(|id| !self.unlock_db.contains(id))
-            .cloned()
+            .filter(|id| !self.unlock_db.contains(**id))
+            .copied()
             .collect();
 
         if !new_songs.is_empty() {
             info!("Found {} songs to upload to remote", new_songs.len());
         }
 
-        for (i, song_id) in self.game_data.song_db.keys().enumerate() {
-            let Some(song) = self.game_data.song_db.get(song_id) else {
+        for (i, &song_id) in self.game_data.song_db.keys().enumerate() {
+            let Some(song) = self.game_data.song_db.get(&song_id) else {
                 continue;
             };
 
@@ -795,7 +789,7 @@ impl Reflux {
             }
 
             // Check for unlock type/state changes
-            if let Some(unlock_data) = self.game_data.unlock_state.get(song_id) {
+            if let Some(unlock_data) = self.game_data.unlock_state.get(&song_id) {
                 let current_type = match unlock_data.unlock_type {
                     UnlockType::Base => 1,
                     UnlockType::Bits => 2,
@@ -803,27 +797,23 @@ impl Reflux {
                 };
 
                 // Check unlock type change
-                if self
-                    .unlock_db
-                    .has_unlock_type_changed(song_id, current_type)
-                {
-                    info!("Unlock type changed for {}: updating remote", song_id);
+                if self.unlock_db.has_unlock_type_changed(song_id, current_type) {
+                    info!("Unlock type changed for {:05}: updating remote", song_id);
+                    let song_id_str = format!("{:05}", song_id);
                     if let Err(e) = api
-                        .update_chart_unlock_type(song_id, current_type as u8)
+                        .update_chart_unlock_type(&song_id_str, current_type as u8)
                         .await
                     {
-                        error!("Failed to update unlock type for {}: {}", song_id, e);
+                        error!("Failed to update unlock type for {:05}: {}", song_id, e);
                     }
                 }
 
                 // Check unlock state change
-                if self
-                    .unlock_db
-                    .has_unlocks_changed(song_id, unlock_data.unlocks)
-                {
-                    info!("Unlock state changed for {}: reporting to remote", song_id);
-                    if let Err(e) = api.report_unlock(song_id, unlock_data.unlocks).await {
-                        error!("Failed to report unlock for {}: {}", song_id, e);
+                if self.unlock_db.has_unlocks_changed(song_id, unlock_data.unlocks) {
+                    info!("Unlock state changed for {:05}: reporting to remote", song_id);
+                    let song_id_str = format!("{:05}", song_id);
+                    if let Err(e) = api.report_unlock(&song_id_str, unlock_data.unlocks).await {
+                        error!("Failed to report unlock for {:05}: {}", song_id, e);
                     }
                 }
 
@@ -840,13 +830,14 @@ impl Reflux {
     async fn upload_song_info(
         &self,
         api: &RefluxApi,
-        song_id: &str,
+        song_id: u32,
         song: &SongInfo,
     ) -> Result<()> {
+        let song_id_str = format!("{:05}", song_id);
         let unlock_type = self
             .game_data
             .unlock_state
-            .get(song_id)
+            .get(&song_id)
             .map(|u| match u.unlock_type {
                 UnlockType::Base => 1,
                 UnlockType::Bits => 2,
@@ -856,7 +847,7 @@ impl Reflux {
 
         // Add song
         let params = AddSongParams {
-            song_id,
+            song_id: &song_id_str,
             title: &song.title,
             title_english: &song.title_english,
             artist: &song.artist,
@@ -866,7 +857,7 @@ impl Reflux {
         };
 
         if let Err(e) = api.add_song(params).await {
-            error!("Failed to add song {}: {}", song_id, e);
+            error!("Failed to add song {:05}: {}", song_id, e);
             return Ok(());
         }
 
@@ -891,11 +882,11 @@ impl Reflux {
             );
 
             if let Err(e) = api
-                .add_chart(song_id, diff_idx as u8, level, total_notes, unlocked)
+                .add_chart(&song_id_str, diff_idx as u8, level, total_notes, unlocked)
                 .await
             {
                 error!(
-                    "Failed to add chart {}[{}]: {}",
+                    "Failed to add chart {:05}[{}]: {}",
                     song_id,
                     difficulty.short_name(),
                     e
@@ -915,7 +906,7 @@ impl Reflux {
 
                 if let Err(e) = api
                     .post_score(
-                        song_id,
+                        &song_id_str,
                         diff_idx as u8,
                         ex_score,
                         miss_count,
@@ -925,7 +916,7 @@ impl Reflux {
                     .await
                 {
                     error!(
-                        "Failed to post score {}[{}]: {}",
+                        "Failed to post score {:05}[{}]: {}",
                         song_id,
                         difficulty.short_name(),
                         e

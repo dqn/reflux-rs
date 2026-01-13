@@ -9,7 +9,7 @@ use crate::memory::MemoryReader;
 /// Song metadata
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SongInfo {
-    pub id: String,
+    pub id: u32,
     pub title: String,
     pub title_english: String,
     pub artist: String,
@@ -109,7 +109,7 @@ impl SongInfo {
         ]);
 
         Ok(Some(SongInfo {
-            id: format!("{:05}", song_id),
+            id: song_id as u32,
             title,
             title_english,
             artist,
@@ -139,7 +139,7 @@ fn decode_shift_jis(bytes: &[u8]) -> String {
 pub fn fetch_song_database(
     reader: &MemoryReader,
     song_list_addr: u64,
-) -> Result<HashMap<String, SongInfo>> {
+) -> Result<HashMap<u32, SongInfo>> {
     let mut result = HashMap::new();
     let mut current_position: u64 = 0;
 
@@ -148,7 +148,7 @@ pub fn fetch_song_database(
 
         match SongInfo::read_from_memory(reader, address)? {
             Some(song) if !song.title.is_empty() => {
-                result.insert(song.id.clone(), song);
+                result.insert(song.id, song);
             }
             _ => {
                 // End of song list

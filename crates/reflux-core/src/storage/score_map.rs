@@ -7,7 +7,7 @@ use crate::memory::MemoryReader;
 /// Score data for a single song (all difficulties)
 #[derive(Debug, Clone, Default)]
 pub struct ScoreData {
-    pub song_id: String,
+    pub song_id: u32,
     /// Lamp for each difficulty: SPB, SPN, SPH, SPA, SPL, DPB, DPN, DPH, DPA, DPL
     pub lamp: [Lamp; 10],
     /// EX Score for each difficulty
@@ -19,7 +19,7 @@ pub struct ScoreData {
 }
 
 impl ScoreData {
-    pub fn new(song_id: String) -> Self {
+    pub fn new(song_id: u32) -> Self {
         Self {
             song_id,
             ..Default::default()
@@ -87,15 +87,15 @@ impl ListNode {
         }
     }
 
-    fn key(&self) -> String {
-        format!("{:05}_{}_{}", self.song, self.diff, self.playtype)
+    fn key(&self) -> (u32, i32, i32) {
+        (self.song as u32, self.diff, self.playtype)
     }
 }
 
 /// Map of song scores loaded from INFINITAS memory
 #[derive(Debug, Clone, Default)]
 pub struct ScoreMap {
-    scores: HashMap<String, ScoreData>,
+    scores: HashMap<u32, ScoreData>,
 }
 
 impl ScoreMap {
@@ -107,9 +107,9 @@ impl ScoreMap {
     pub fn load_from_memory(
         reader: &MemoryReader,
         data_map_addr: u64,
-        song_db: &HashMap<String, SongInfo>,
+        song_db: &HashMap<u32, SongInfo>,
     ) -> Result<Self> {
-        let mut nodes: HashMap<String, ListNode> = HashMap::new();
+        let mut nodes: HashMap<(u32, i32, i32), ListNode> = HashMap::new();
 
         // Read null object address (used to skip empty entries)
         let null_obj = reader.read_u64(data_map_addr.wrapping_sub(16))?;
@@ -152,16 +152,7 @@ impl ScoreMap {
 
         // Convert nodes to ScoreData
         let mut result = Self::new();
-        for (key, node) in nodes {
-            let parts: Vec<&str> = key.split('_').collect();
-            if parts.len() != 3 {
-                continue;
-            }
-
-            let song_id = parts[0].to_string();
-            let diff: i32 = parts[1].parse().unwrap_or(0);
-            let playtype: i32 = parts[2].parse().unwrap_or(0);
-
+        for ((song_id, diff, playtype), node) in nodes {
             // Calculate difficulty index: diff + playtype * 5
             let difficulty_index = (diff + playtype * 5) as usize;
             if difficulty_index >= 10 {
@@ -181,8 +172,8 @@ impl ScoreMap {
     fn follow_linked_list(
         reader: &MemoryReader,
         entry_point: u64,
-        song_db: &HashMap<String, SongInfo>,
-        nodes: &mut HashMap<String, ListNode>,
+        song_db: &HashMap<u32, SongInfo>,
+        nodes: &mut HashMap<(u32, i32, i32), ListNode>,
     ) -> Result<()> {
         let mut visited: HashSet<u64> = HashSet::new();
         let mut current_addr = entry_point;
@@ -199,7 +190,7 @@ impl ScoreMap {
             let node = ListNode::from_bytes(&buffer);
 
             // Check if song exists in database
-            let song_id = format!("{:05}", node.song);
+            let song_id = node.song as u32;
             if !song_db.contains_key(&song_id) {
                 break;
             }
@@ -217,25 +208,23 @@ impl ScoreMap {
         Ok(())
     }
 
-    pub fn get(&self, song_id: &str) -> Option<&ScoreData> {
-        self.scores.get(song_id)
+    pub fn get(&self, song_id: u32) -> Option<&ScoreData> {
+        self.scores.get(&song_id)
     }
 
-    pub fn get_mut(&mut self, song_id: &str) -> Option<&mut ScoreData> {
-        self.scores.get_mut(song_id)
+    pub fn get_mut(&mut self, song_id: u32) -> Option<&mut ScoreData> {
+        self.scores.get_mut(&song_id)
     }
 
-    pub fn insert(&mut self, song_id: String, data: ScoreData) {
+    pub fn insert(&mut self, song_id: u32, data: ScoreData) {
         self.scores.insert(song_id, data);
     }
 
-    pub fn get_or_insert(&mut self, song_id: String) -> &mut ScoreData {
-        self.scores
-            .entry(song_id.clone())
-            .or_insert_with(|| ScoreData::new(song_id))
+    pub fn get_or_insert(&mut self, song_id: u32) -> &mut ScoreData {
+        self.scores.entry(song_id).or_insert_with(|| ScoreData::new(song_id))
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &ScoreData)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&u32, &ScoreData)> {
         self.scores.iter()
     }
 

@@ -5,14 +5,14 @@ use crate::game::{Difficulty, SongInfo};
 /// Chart identifier (song + difficulty)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Chart {
-    pub song_id: String,
+    pub song_id: u32,
     pub difficulty: Difficulty,
 }
 
 /// Full chart information including song metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChartInfo {
-    pub song_id: String,
+    pub song_id: u32,
     pub title: String,
     pub title_english: String,
     pub artist: String,
@@ -28,7 +28,7 @@ impl ChartInfo {
     pub fn from_song_info(song: &SongInfo, difficulty: Difficulty, unlocked: bool) -> Self {
         let diff_index = difficulty as usize;
         Self {
-            song_id: song.id.clone(),
+            song_id: song.id,
             title: song.title.clone(),
             title_english: song.title_english.clone(),
             artist: song.artist.clone(),

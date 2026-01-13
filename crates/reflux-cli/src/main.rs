@@ -165,9 +165,11 @@ async fn main() -> Result<()> {
                 // Load custom types
                 match CustomTypes::load("customtypes.txt") {
                     Ok(ct) => {
-                        let types: std::collections::HashMap<String, String> = ct
+                        let types: std::collections::HashMap<u32, String> = ct
                             .iter()
-                            .map(|(k, v): (&String, &String)| (k.clone(), v.clone()))
+                            .filter_map(|(k, v): (&String, &String)| {
+                                k.parse::<u32>().ok().map(|id| (id, v.clone()))
+                            })
                             .collect();
                         info!("Loaded {} custom types", types.len());
                         reflux.set_custom_types(types);
