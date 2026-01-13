@@ -82,7 +82,9 @@ impl Difficulty {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
 #[repr(u8)]
 pub enum Lamp {
     #[default]
@@ -142,8 +144,9 @@ impl Lamp {
     }
 }
 
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
 #[repr(u8)]
 pub enum Grade {
     #[default]
@@ -209,7 +212,6 @@ impl Grade {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum PlayType {
     #[default]
@@ -246,7 +248,6 @@ impl UnlockType {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum GameState {

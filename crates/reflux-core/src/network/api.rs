@@ -64,7 +64,9 @@ impl RefluxApi {
             }
         }
 
-        Err(Error::NetworkError("Could not determine latest version".to_string()))
+        Err(Error::NetworkError(
+            "Could not determine latest version".to_string(),
+        ))
     }
 
     /// Fetch a support file from the update server
@@ -74,7 +76,11 @@ impl RefluxApi {
     }
 
     /// Update a local support file if a newer version is available
-    pub async fn update_support_file<P: AsRef<Path>>(&self, filename: &str, path: P) -> Result<bool> {
+    pub async fn update_support_file<P: AsRef<Path>>(
+        &self,
+        filename: &str,
+        path: P,
+    ) -> Result<bool> {
         // Get current version from local file
         let current_version = if path.as_ref().exists() {
             fs::read_to_string(&path)?
@@ -98,7 +104,11 @@ impl RefluxApi {
         if remote_version > current_version {
             // Archive old file if it exists
             if path.as_ref().exists() {
-                let archive_dir = path.as_ref().parent().unwrap_or(Path::new(".")).join("archive");
+                let archive_dir = path
+                    .as_ref()
+                    .parent()
+                    .unwrap_or(Path::new("."))
+                    .join("archive");
                 fs::create_dir_all(&archive_dir)?;
 
                 let archive_name = format!("{}_{}.txt", filename, current_version);
@@ -129,7 +139,11 @@ impl RefluxApi {
 
         // Archive old file if it exists
         if path.as_ref().exists() {
-            let archive_dir = path.as_ref().parent().unwrap_or(Path::new(".")).join("archive");
+            let archive_dir = path
+                .as_ref()
+                .parent()
+                .unwrap_or(Path::new("."))
+                .join("archive");
             fs::create_dir_all(&archive_dir)?;
 
             let old_version = fs::read_to_string(&path)?
@@ -152,11 +166,7 @@ impl RefluxApi {
     }
 
     /// Report unlock state change
-    pub async fn report_unlock(
-        &self,
-        song_id: &str,
-        unlock_state: i32,
-    ) -> Result<String> {
+    pub async fn report_unlock(&self, song_id: &str, unlock_state: i32) -> Result<String> {
         let mut form = HashMap::new();
         form.insert("songid".to_string(), song_id.to_string());
         form.insert("state".to_string(), unlock_state.to_string());
@@ -165,11 +175,7 @@ impl RefluxApi {
     }
 
     /// Update chart unlock type
-    pub async fn update_chart_unlock_type(
-        &self,
-        song_id: &str,
-        unlock_type: u8,
-    ) -> Result<String> {
+    pub async fn update_chart_unlock_type(&self, song_id: &str, unlock_type: u8) -> Result<String> {
         let mut form = HashMap::new();
         form.insert("songid".to_string(), song_id.to_string());
         form.insert("unlockType".to_string(), unlock_type.to_string());

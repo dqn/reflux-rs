@@ -57,7 +57,10 @@ impl EncodingFixes {
     ///
     /// Returns the fixed string if a fix exists, otherwise returns the original.
     pub fn apply(&self, text: &str) -> String {
-        self.fixes.get(text).cloned().unwrap_or_else(|| text.to_string())
+        self.fixes
+            .get(text)
+            .cloned()
+            .unwrap_or_else(|| text.to_string())
     }
 
     /// Check if a fix exists for the given text

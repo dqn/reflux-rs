@@ -24,11 +24,7 @@ impl HttpClient {
         }
     }
 
-    pub async fn post_form(
-        &self,
-        endpoint: &str,
-        form: HashMap<String, String>,
-    ) -> Result<String> {
+    pub async fn post_form(&self, endpoint: &str, form: HashMap<String, String>) -> Result<String> {
         let url = format!("{}/{}", self.base_url, endpoint);
 
         let mut form = form;

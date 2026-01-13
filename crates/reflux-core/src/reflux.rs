@@ -9,14 +9,17 @@ use tracing::{error, info, warn};
 use crate::config::Config;
 use crate::error::Result;
 use crate::game::{
-    calculate_dj_points, check_version_match, find_game_version, get_unlock_state_for_difficulty,
-    get_unlock_states, ChartInfo, Difficulty, GameState, GameStateDetector, Grade, Judge, Lamp,
-    PlayData, PlayType, Settings, SongInfo, UnlockData, UnlockType,
+    ChartInfo, Difficulty, GameState, GameStateDetector, Grade, Judge, Lamp, PlayData, PlayType,
+    Settings, SongInfo, UnlockData, UnlockType, calculate_dj_points, check_version_match,
+    find_game_version, get_unlock_state_for_difficulty, get_unlock_states,
 };
 use crate::memory::{MemoryReader, ProcessHandle};
 use crate::network::{AddSongParams, RefluxApi};
 use crate::offset::OffsetsCollection;
-use crate::storage::{export_tracker_tsv, format_play_data_console, format_post_form, ScoreMap, SessionManager, Tracker, TrackerInfo, UnlockDb};
+use crate::storage::{
+    ScoreMap, SessionManager, Tracker, TrackerInfo, UnlockDb, export_tracker_tsv,
+    format_play_data_console, format_post_form,
+};
 use crate::stream::StreamOutput;
 
 /// Main Reflux application
@@ -215,10 +218,10 @@ impl Reflux {
                         // Save to session file (TSV and JSON)
                         if self.config.record.save_local {
                             // Append TSV row
-                            if let Err(e) = self.session_manager.append_tsv_row(
-                                &play_data,
-                                &self.config.local_record,
-                            ) {
+                            if let Err(e) = self
+                                .session_manager
+                                .append_tsv_row(&play_data, &self.config.local_record)
+                            {
                                 error!("Failed to append TSV row: {}", e);
                             }
                         }
@@ -300,17 +303,17 @@ impl Reflux {
                 self.poll_unlock_changes(reader);
 
                 // Export tracker.tsv if save_local is enabled
-                if self.config.record.save_local {
-                    if let Err(e) = export_tracker_tsv(
+                if self.config.record.save_local
+                    && let Err(e) = export_tracker_tsv(
                         "tracker.tsv",
                         &self.tracker,
                         &self.song_db,
                         &self.unlock_state,
                         &self.score_map,
                         &self.custom_types,
-                    ) {
-                        error!("Failed to export tracker.tsv: {}", e);
-                    }
+                    )
+                {
+                    error!("Failed to export tracker.tsv: {}", e);
                 }
             }
             GameState::Playing => {
@@ -352,8 +355,8 @@ impl Reflux {
         }
 
         // Read current unlock state
-        let current_state =
-            match get_unlock_states(reader, self.offsets.unlock_data, &self.song_db) {
+        let current_state = match get_unlock_states(reader, self.offsets.unlock_data, &self.song_db)
+        {
             Ok(state) => state,
             Err(e) => {
                 error!("Failed to read unlock state: {}", e);
@@ -400,8 +403,7 @@ impl Reflux {
         let diff = reader.read_i32(self.offsets.current_song + 4)?;
 
         let song_id_str = format!("{:05}", song_id);
-        let difficulty =
-            Difficulty::from_u8(diff as u8).unwrap_or(Difficulty::SpN);
+        let difficulty = Difficulty::from_u8(diff as u8).unwrap_or(Difficulty::SpN);
 
         Ok((song_id_str, difficulty))
     }
@@ -415,8 +417,7 @@ impl Reflux {
         let lamp_val = reader.read_i32(self.offsets.play_data + word * 6)?;
 
         let song_id_str = format!("{:05}", song_id);
-        let difficulty =
-            Difficulty::from_u8(difficulty_val as u8).unwrap_or(Difficulty::SpN);
+        let difficulty = Difficulty::from_u8(difficulty_val as u8).unwrap_or(Difficulty::SpN);
         let mut lamp = Lamp::from_u8(lamp_val as u8).unwrap_or(Lamp::NoPlay);
 
         // Fetch judge data
@@ -485,7 +486,7 @@ impl Reflux {
         let word: u64 = 4;
         let base = self.offsets.judge_data;
 
-        let p1_pgreat = reader.read_u32(base)? ;
+        let p1_pgreat = reader.read_u32(base)?;
         let p1_great = reader.read_u32(base + word)?;
         let p1_good = reader.read_u32(base + word * 2)?;
         let p1_bad = reader.read_u32(base + word * 3)?;
@@ -564,15 +565,8 @@ impl Reflux {
         let battle_val = reader.read_i32(base + word * 8)?;
 
         Ok(Settings::from_raw_values(
-            play_type,
-            style_val,
-            style2_val,
-            gauge_val,
-            assist_val,
-            range_val,
-            flip_val,
-            battle_val,
-            h_ran_val,
+            play_type, style_val, style2_val, gauge_val, assist_val, range_val, flip_val,
+            battle_val, h_ran_val,
         ))
     }
 
@@ -611,7 +605,11 @@ impl Reflux {
     pub fn load_unlock_db<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         match UnlockDb::load(&path) {
             Ok(db) => {
-                info!("Loaded unlock db from {:?} ({} entries)", path.as_ref(), db.len());
+                info!(
+                    "Loaded unlock db from {:?} ({} entries)",
+                    path.as_ref(),
+                    db.len()
+                );
                 self.unlock_db = db;
             }
             Err(e) => {
@@ -635,7 +633,10 @@ impl Reflux {
         }
 
         self.unlock_state = get_unlock_states(reader, self.offsets.unlock_data, &self.song_db)?;
-        info!("Loaded unlock state from memory ({} entries)", self.unlock_state.len());
+        info!(
+            "Loaded unlock state from memory ({} entries)",
+            self.unlock_state.len()
+        );
         Ok(())
     }
 
@@ -694,7 +695,10 @@ impl Reflux {
                 };
 
                 // Check unlock type change
-                if self.unlock_db.has_unlock_type_changed(song_id, current_type) {
+                if self
+                    .unlock_db
+                    .has_unlock_type_changed(song_id, current_type)
+                {
                     info!("Unlock type changed for {}: updating remote", song_id);
                     if let Err(e) = api
                         .update_chart_unlock_type(song_id, current_type as u8)
@@ -705,7 +709,10 @@ impl Reflux {
                 }
 
                 // Check unlock state change
-                if self.unlock_db.has_unlocks_changed(song_id, unlock_data.unlocks) {
+                if self
+                    .unlock_db
+                    .has_unlocks_changed(song_id, unlock_data.unlocks)
+                {
                     info!("Unlock state changed for {}: reporting to remote", song_id);
                     if let Err(e) = api.report_unlock(song_id, unlock_data.unlocks).await {
                         error!("Failed to report unlock for {}: {}", song_id, e);
@@ -784,6 +791,37 @@ impl Reflux {
                     difficulty.short_name(),
                     e
                 );
+            }
+
+            // Post initial score from score map
+            if let Some(score_data) = self.score_map.get(song_id) {
+                let ex_score = score_data.score[diff_idx];
+                let miss_count = score_data.miss_count[diff_idx].unwrap_or(0);
+                let lamp = score_data.lamp[diff_idx];
+                let grade = if total_notes > 0 {
+                    PlayData::calculate_grade(ex_score, total_notes)
+                } else {
+                    Grade::NoPlay
+                };
+
+                if let Err(e) = api
+                    .post_score(
+                        song_id,
+                        diff_idx as u8,
+                        ex_score,
+                        miss_count,
+                        grade.short_name(),
+                        lamp.short_name(),
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to post score {}[{}]: {}",
+                        song_id,
+                        difficulty.short_name(),
+                        e
+                    );
+                }
             }
 
             // Small delay to avoid overwhelming the server

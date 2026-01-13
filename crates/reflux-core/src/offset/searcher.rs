@@ -115,7 +115,8 @@ impl<'a> OffsetSearcher<'a> {
         self.load_buffer_around(base_hint, INITIAL_SEARCH_SIZE)?;
 
         // Pattern: song_id, difficulty, ex_score
-        let pattern = merge_byte_representations(&[song_id as i32, difficulty as i32, ex_score as i32]);
+        let pattern =
+            merge_byte_representations(&[song_id as i32, difficulty as i32, ex_score as i32]);
         self.fetch_and_search(base_hint, &pattern, 0, None)
     }
 
@@ -170,7 +171,8 @@ impl<'a> OffsetSearcher<'a> {
             self.load_buffer_around(hint, search_size)?;
 
             if let Some(pos) = self.find_pattern(pattern, ignore_address) {
-                let address = (self.buffer_base + pos as u64).wrapping_add_signed(offset_from_match);
+                let address =
+                    (self.buffer_base + pos as u64).wrapping_add_signed(offset_from_match);
                 return Ok(address);
             }
 
@@ -197,7 +199,8 @@ impl<'a> OffsetSearcher<'a> {
 
             for (index, pattern) in patterns.iter().enumerate() {
                 if let Some(pos) = self.find_pattern(pattern, ignore_address) {
-                    let address = (self.buffer_base + pos as u64).wrapping_add_signed(offset_from_match);
+                    let address =
+                        (self.buffer_base + pos as u64).wrapping_add_signed(offset_from_match);
                     return Ok(SearchResult {
                         address,
                         pattern_index: index,
@@ -223,7 +226,11 @@ impl<'a> OffsetSearcher<'a> {
             judge.good as i32,
             judge.bad as i32,
             judge.poor as i32,
-            0, 0, 0, 0, 0, // P2 zeros
+            0,
+            0,
+            0,
+            0,
+            0, // P2 zeros
             judge.combo_break as i32,
             0,
             judge.fast as i32,
@@ -234,7 +241,11 @@ impl<'a> OffsetSearcher<'a> {
 
         // P2 pattern: zeros for P1, then P2 judgments
         let pattern_p2 = merge_byte_representations(&[
-            0, 0, 0, 0, 0, // P1 zeros
+            0,
+            0,
+            0,
+            0,
+            0, // P1 zeros
             judge.pgreat as i32,
             judge.great as i32,
             judge.good as i32,
@@ -344,7 +355,10 @@ impl<'a> OffsetSearcher<'a> {
 
         prompter.display_message("Searching for UnlockData...");
         new_offsets.unlock_data = self.search_unlock_data_offset(old_offsets.unlock_data)?;
-        prompter.display_message(&format!("Found UnlockData at 0x{:X}", new_offsets.unlock_data));
+        prompter.display_message(&format!(
+            "Found UnlockData at 0x{:X}",
+            new_offsets.unlock_data
+        ));
 
         prompter.display_message("Searching for DataMap...");
         new_offsets.data_map = self.search_data_map_offset(old_offsets.data_map)?;
@@ -369,10 +383,8 @@ impl<'a> OffsetSearcher<'a> {
 
         // Try P1 pattern first, then P2
         prompter.display_message("Searching for JudgeData...");
-        let (judge_address, play_type) = self.search_judge_data_with_playtype(
-            old_offsets.judge_data,
-            &judge,
-        )?;
+        let (judge_address, play_type) =
+            self.search_judge_data_with_playtype(old_offsets.judge_data, &judge)?;
         new_offsets.judge_data = judge_address;
         prompter.display_message(&format!(
             "Found JudgeData at 0x{:X} ({})",
@@ -383,20 +395,13 @@ impl<'a> OffsetSearcher<'a> {
         // Phase 3: Play data and current song (Sleepless Days SPA = 25094, difficulty 3)
         let ex_score = judge.pgreat * 2 + judge.great;
         prompter.display_message("Searching for PlayData...");
-        new_offsets.play_data = self.search_play_data_offset(
-            old_offsets.play_data,
-            25094,
-            3,
-            ex_score,
-        )?;
+        new_offsets.play_data =
+            self.search_play_data_offset(old_offsets.play_data, 25094, 3, ex_score)?;
         prompter.display_message(&format!("Found PlayData at 0x{:X}", new_offsets.play_data));
 
         prompter.display_message("Searching for CurrentSong...");
-        let current_song_addr = self.search_current_song_offset(
-            old_offsets.current_song,
-            25094,
-            3,
-        )?;
+        let current_song_addr =
+            self.search_current_song_offset(old_offsets.current_song, 25094, 3)?;
         // Verify it's different from PlayData
         new_offsets.current_song = if current_song_addr == new_offsets.play_data {
             self.search_current_song_offset_excluding(
@@ -408,11 +413,14 @@ impl<'a> OffsetSearcher<'a> {
         } else {
             current_song_addr
         };
-        prompter.display_message(&format!("Found CurrentSong at 0x{:X}", new_offsets.current_song));
+        prompter.display_message(&format!(
+            "Found CurrentSong at 0x{:X}",
+            new_offsets.current_song
+        ));
 
         // Phase 4: Play settings (requires user to set specific options)
         prompter.prompt_continue(
-            "Set the following settings and then press ENTER: RANDOM EXHARD OFF SUDDEN+"
+            "Set the following settings and then press ENTER: RANDOM EXHARD OFF SUDDEN+",
         );
 
         prompter.display_message("Searching for PlaySettings...");
@@ -426,7 +434,7 @@ impl<'a> OffsetSearcher<'a> {
         )?;
 
         prompter.prompt_continue(
-            "Now set the following settings and then press ENTER: MIRROR EASY AUTO-SCRATCH HIDDEN+"
+            "Now set the following settings and then press ENTER: MIRROR EASY AUTO-SCRATCH HIDDEN+",
         );
 
         // MIRROR=4, EASY=2, AUTO-SCRATCH=1, HIDDEN+=2
@@ -439,7 +447,8 @@ impl<'a> OffsetSearcher<'a> {
         )?;
 
         if settings_addr1 != settings_addr2 {
-            prompter.display_warning("Warning: Settings addresses don't match between two searches!");
+            prompter
+                .display_warning("Warning: Settings addresses don't match between two searches!");
         }
 
         // Adjust for P2 offset if needed
@@ -449,7 +458,10 @@ impl<'a> OffsetSearcher<'a> {
         } else {
             settings_addr1
         };
-        prompter.display_message(&format!("Found PlaySettings at 0x{:X}", new_offsets.play_settings));
+        prompter.display_message(&format!(
+            "Found PlaySettings at 0x{:X}",
+            new_offsets.play_settings
+        ));
 
         prompter.display_message("Offset search complete!");
 

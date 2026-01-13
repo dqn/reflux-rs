@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::game::{GameState, PlayData, SongInfo, Difficulty};
+use crate::game::{Difficulty, GameState, PlayData, SongInfo};
 use crate::storage::format_post_form;
 use std::fs;
 use std::path::Path;

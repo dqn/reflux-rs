@@ -135,9 +135,7 @@ pub fn get_unlock_state_for_difficulty(
             return unlock_data.is_difficulty_unlocked(difficulty);
         } else {
             // For other songs, check if note count is non-zero
-            return song_info
-                .map(|s| s.total_notes[0] > 0)
-                .unwrap_or(false);
+            return song_info.map(|s| s.total_notes[0] > 0).unwrap_or(false);
         }
     }
 
@@ -235,10 +233,8 @@ mod tests {
             0x01, 0x00, 0x00, 0x00, // unlock_type = Base
             0x1F, 0x00, 0x00, 0x00, // unlocks = 0x1F
             0x00, 0x00, 0x00, 0x00, // padding
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
         ];
 
         let unlock = UnlockData::from_bytes(&bytes).unwrap();

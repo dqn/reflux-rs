@@ -60,9 +60,7 @@ impl KamaitachiClient {
             return Ok(None);
         }
 
-        Ok(search_result
-            .body
-            .and_then(|b| b.songs.into_iter().next()))
+        Ok(search_result.body.and_then(|b| b.songs.into_iter().next()))
     }
 
     pub async fn search_song_with_retry(&self, title: &str) -> Result<Option<KamaitachiSong>> {

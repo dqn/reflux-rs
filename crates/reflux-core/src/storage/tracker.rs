@@ -62,8 +62,8 @@ impl Tracker {
             let parts: Vec<&str> = line.split(',').collect();
             if parts.len() >= 6 {
                 let song_id: u32 = parts[0].parse().unwrap_or(0);
-                let difficulty = Difficulty::from_u8(parts[1].parse().unwrap_or(0))
-                    .unwrap_or(Difficulty::SpN);
+                let difficulty =
+                    Difficulty::from_u8(parts[1].parse().unwrap_or(0)).unwrap_or(Difficulty::SpN);
                 let grade = Grade::from_u8(parts[2].parse().unwrap_or(0)).unwrap_or(Grade::NoPlay);
                 let lamp = Lamp::from_u8(parts[3].parse().unwrap_or(0)).unwrap_or(Lamp::NoPlay);
                 let ex_score: u32 = parts[4].parse().unwrap_or(0);

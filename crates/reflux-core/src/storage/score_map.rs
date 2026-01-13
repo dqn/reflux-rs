@@ -27,7 +27,10 @@ impl ScoreData {
     }
 
     pub fn get_lamp(&self, difficulty: Difficulty) -> Lamp {
-        self.lamp.get(difficulty as usize).copied().unwrap_or(Lamp::NoPlay)
+        self.lamp
+            .get(difficulty as usize)
+            .copied()
+            .unwrap_or(Lamp::NoPlay)
     }
 
     pub fn get_score(&self, difficulty: Difficulty) -> u32 {
@@ -166,7 +169,8 @@ impl ScoreMap {
             }
 
             let score_data = result.get_or_insert(song_id);
-            score_data.lamp[difficulty_index] = Lamp::from_u8(node.lamp as u8).unwrap_or(Lamp::NoPlay);
+            score_data.lamp[difficulty_index] =
+                Lamp::from_u8(node.lamp as u8).unwrap_or(Lamp::NoPlay);
             score_data.score[difficulty_index] = node.score;
             score_data.miss_count[difficulty_index] = Some(node.miss_count);
         }

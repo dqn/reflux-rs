@@ -1,9 +1,11 @@
 use crate::config::LocalRecordConfig;
 use crate::error::Result;
 use crate::game::PlayData;
-use crate::storage::format::{format_dynamic_tsv_header, format_dynamic_tsv_row, format_json_entry};
+use crate::storage::format::{
+    format_dynamic_tsv_header, format_dynamic_tsv_row, format_json_entry,
+};
 use chrono::{DateTime, Local};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::fs::{self};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -94,9 +96,7 @@ impl SessionManager {
 
     /// Append a JSON entry to the session file
     pub fn append_json_entry(&mut self, play_data: &PlayData) -> Result<()> {
-        if let (Some(path), Some(json_data)) =
-            (&self.current_json_session, &mut self.json_data)
-        {
+        if let (Some(path), Some(json_data)) = (&self.current_json_session, &mut self.json_data) {
             let entry = format_json_entry(play_data);
 
             if let Some(body) = json_data.get_mut("body")

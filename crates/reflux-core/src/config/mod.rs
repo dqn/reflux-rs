@@ -188,10 +188,7 @@ marqueeidletext = Custom Text
 
         assert!(config.record.save_remote);
         assert!(!config.record.save_local);
-        assert_eq!(
-            config.remote_record.server_address,
-            "https://example.com"
-        );
+        assert_eq!(config.remote_record.server_address, "https://example.com");
         assert_eq!(config.remote_record.api_key, "test123");
         assert!(config.livestream.show_play_state);
         assert_eq!(config.livestream.marquee_idle_text, "Custom Text");

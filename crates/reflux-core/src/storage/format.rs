@@ -3,13 +3,13 @@ use std::fs;
 use std::path::Path;
 
 use serde::Serialize;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 
 use crate::config::LocalRecordConfig;
 use crate::error::Result;
 use crate::game::{
-    calculate_dj_points, get_unlock_state_for_difficulty, Difficulty, Grade, Lamp, PlayData,
-    SongInfo, UnlockData, UnlockType,
+    Difficulty, Grade, Lamp, PlayData, SongInfo, UnlockData, UnlockType, calculate_dj_points,
+    get_unlock_state_for_difficulty,
 };
 use crate::storage::{ScoreMap, Tracker};
 
@@ -190,11 +190,11 @@ pub fn format_post_form(play_data: &PlayData, api_key: &str) -> HashMap<String, 
         play_data.chart.difficulty.short_name().to_string(),
     );
     form.insert("level".to_string(), play_data.chart.level.to_string());
+    form.insert("unlocked".to_string(), play_data.chart.unlocked.to_string());
     form.insert(
-        "unlocked".to_string(),
-        play_data.chart.unlocked.to_string(),
+        "grade".to_string(),
+        play_data.grade.short_name().to_string(),
     );
-    form.insert("grade".to_string(), play_data.grade.short_name().to_string());
     form.insert("gaugepercent".to_string(), play_data.gauge.to_string());
     form.insert("lamp".to_string(), play_data.lamp.short_name().to_string());
     form.insert("exscore".to_string(), play_data.ex_score.to_string());
@@ -324,7 +324,9 @@ pub fn format_tracker_tsv_header() -> String {
     ];
 
     // Add columns for each difficulty (skipping DPB which doesn't exist)
-    let difficulties = ["SPB", "SPN", "SPH", "SPA", "SPL", "DPN", "DPH", "DPA", "DPL"];
+    let difficulties = [
+        "SPB", "SPN", "SPH", "SPA", "SPL", "DPN", "DPH", "DPA", "DPL",
+    ];
     for diff in difficulties {
         columns.push(format!("{} Unlocked", diff));
         columns.push(format!("{} Rating", diff));
@@ -355,13 +357,9 @@ pub fn export_tracker_tsv<P: AsRef<Path>>(
     song_ids.sort();
 
     for song_id in song_ids {
-        if let Some(entry) = generate_tracker_entry(
-            song_id,
-            song_db,
-            unlock_db,
-            score_map,
-            custom_types,
-        ) {
+        if let Some(entry) =
+            generate_tracker_entry(song_id, song_db, unlock_db, score_map, custom_types)
+        {
             lines.push(entry);
         }
     }
@@ -401,8 +399,10 @@ fn generate_tracker_entry(
     columns.push(label);
 
     // Bit costs (for N, H, A)
-    for i in [1, 2, 3] { // SPN, SPH, SPA indices
-        let cost = if unlock.unlock_type == UnlockType::Bits && !custom_types.contains_key(song_id) {
+    for i in [1, 2, 3] {
+        // SPN, SPH, SPA indices
+        let cost = if unlock.unlock_type == UnlockType::Bits && !custom_types.contains_key(song_id)
+        {
             let sp_level = song.levels[i] as i32;
             let dp_level = song.levels[i + 5] as i32; // DPN, DPH, DPA
             500 * (sp_level + dp_level)
@@ -462,12 +462,29 @@ fn generate_tracker_entry(
             dp_djp = dp_djp.max(djp);
         }
 
-        chart_data.push((unlocked, level, lamp, grade, ex_score, miss_count, total_notes, djp));
+        chart_data.push((
+            unlocked,
+            level,
+            lamp,
+            grade,
+            ex_score,
+            miss_count,
+            total_notes,
+            djp,
+        ));
     }
 
     // Add SP/DP DJ Points
-    columns.push(if sp_djp > 0.0 { format!("{}", sp_djp) } else { String::new() });
-    columns.push(if dp_djp > 0.0 { format!("{}", dp_djp) } else { String::new() });
+    columns.push(if sp_djp > 0.0 {
+        format!("{}", sp_djp)
+    } else {
+        String::new()
+    });
+    columns.push(if dp_djp > 0.0 {
+        format!("{}", dp_djp)
+    } else {
+        String::new()
+    });
 
     // Add chart data columns
     for (unlocked, level, lamp, grade, ex_score, miss_count, total_notes, djp) in chart_data {
@@ -476,9 +493,17 @@ fn generate_tracker_entry(
         columns.push(lamp.short_name().to_string());
         columns.push(grade.short_name().to_string());
         columns.push(ex_score.to_string());
-        columns.push(miss_count.map(|m| m.to_string()).unwrap_or_else(|| "-".to_string()));
+        columns.push(
+            miss_count
+                .map(|m| m.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+        );
         columns.push(total_notes.to_string());
-        columns.push(if djp > 0.0 { format!("{}", djp) } else { String::new() });
+        columns.push(if djp > 0.0 {
+            format!("{}", djp)
+        } else {
+            String::new()
+        });
     }
 
     Some(columns.join("\t"))
@@ -521,7 +546,10 @@ pub fn format_play_data_console(play_data: &PlayData) -> String {
     // Build key-value pairs
     let pairs = [
         ("Title", play_data.chart.title.clone()),
-        ("Difficulty", play_data.chart.difficulty.short_name().to_string()),
+        (
+            "Difficulty",
+            play_data.chart.difficulty.short_name().to_string(),
+        ),
         ("Level", play_data.chart.level.to_string()),
         ("EX Score", play_data.ex_score.to_string()),
         ("Grade", play_data.grade.short_name().to_string()),
@@ -535,7 +563,10 @@ pub fn format_play_data_console(play_data: &PlayData) -> String {
         ("Slow", play_data.judge.slow.to_string()),
         ("ComboBreak", play_data.judge.combo_break.to_string()),
         ("Gauge", format!("{}%", play_data.gauge)),
-        ("PlayType", play_data.judge.play_type.short_name().to_string()),
+        (
+            "PlayType",
+            play_data.judge.play_type.short_name().to_string(),
+        ),
         ("Style", play_data.settings.style.as_str().to_string()),
         ("Gauge Type", play_data.settings.gauge.as_str().to_string()),
     ];
@@ -556,6 +587,10 @@ pub fn format_play_summary(play_data: &PlayData) -> String {
         play_data.grade.short_name(),
         play_data.lamp.short_name(),
         play_data.ex_score,
-        if play_data.data_available { "" } else { "[INVALID]" }
+        if play_data.data_available {
+            ""
+        } else {
+            "[INVALID]"
+        }
     )
 }
