@@ -9,9 +9,9 @@ use tracing::{error, info, warn};
 use crate::config::Config;
 use crate::error::Result;
 use crate::game::{
-    check_version_match, find_game_version, get_unlock_state_for_difficulty, get_unlock_states,
-    ChartInfo, Difficulty, GameState, GameStateDetector, Grade, Judge, Lamp, PlayData, PlayType,
-    Settings, SongInfo, UnlockData, UnlockType,
+    calculate_dj_points, check_version_match, find_game_version, get_unlock_state_for_difficulty,
+    get_unlock_states, ChartInfo, Difficulty, GameState, GameStateDetector, Grade, Judge, Lamp,
+    PlayData, PlayType, Settings, SongInfo, UnlockData, UnlockType,
 };
 use crate::memory::{MemoryReader, ProcessHandle};
 use crate::network::{AddSongParams, RefluxApi};
@@ -571,7 +571,7 @@ impl Reflux {
             } else {
                 None
             },
-            dj_points: 0.0, // TODO: Calculate DJ Points
+            dj_points: calculate_dj_points(play_data.ex_score, play_data.grade, play_data.lamp),
         };
 
         self.tracker.update(key, new_info);
@@ -853,6 +853,11 @@ impl Reflux {
         }
 
         Ok(result)
+    }
+
+    /// Get a reference to the offsets
+    pub fn offsets(&self) -> &OffsetsCollection {
+        &self.offsets
     }
 
     /// Get the offsets version
