@@ -4,6 +4,7 @@ pub mod game;
 pub mod memory;
 pub mod network;
 pub mod offset;
+pub mod reflux;
 pub mod storage;
 pub mod stream;
 
@@ -16,5 +17,6 @@ pub use game::{
 pub use memory::{MemoryReader, ProcessHandle};
 pub use network::{HttpClient, KamaitachiClient, RefluxApi};
 pub use offset::{load_offsets, save_offsets, OffsetSearcher, OffsetsCollection};
-pub use storage::{ScoreData, ScoreMap, SessionManager, Tracker, TrackerInfo, TsvRowData};
+pub use reflux::Reflux;
+pub use storage::{ChartKey, ScoreData, ScoreMap, SessionManager, Tracker, TrackerInfo, TsvRowData};
 pub use stream::StreamOutput;

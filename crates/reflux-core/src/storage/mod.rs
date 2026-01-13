@@ -6,4 +6,4 @@ mod tracker;
 pub use format::*;
 pub use score_map::*;
 pub use session::*;
-pub use tracker::*;
+pub use tracker::{ChartKey, Tracker, TrackerInfo};

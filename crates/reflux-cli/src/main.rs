@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use reflux_core::{Config, GameState, MemoryReader, ProcessHandle};
+use reflux_core::{load_offsets, Config, ProcessHandle, Reflux};
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -9,19 +9,29 @@ use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(name = "reflux")]
-#[command(about = "INFINITAS score tracker")]
+#[command(about = "INFINITAS score tracker", version)]
 struct Args {
+    /// Path to config file
     #[arg(short, long, default_value = "config.ini")]
     config: PathBuf,
 
+    /// Path to offsets file
     #[arg(short, long, default_value = "offsets.txt")]
     offsets: PathBuf,
+
+    /// Path to tracker database file
+    #[arg(short, long, default_value = "tracker.db")]
+    tracker: PathBuf,
 }
 
 fn main() -> Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("reflux=info".parse()?))
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive("reflux=info".parse()?)
+                .add_directive("reflux_core=info".parse()?),
+        )
         .init();
 
     let args = Args::parse();
@@ -41,16 +51,24 @@ fn main() -> Result<()> {
     };
 
     // Load offsets
-    let offsets = match reflux_core::load_offsets(&args.offsets) {
+    let offsets = match load_offsets(&args.offsets) {
         Ok(o) => {
             info!("Loaded offsets version: {}", o.version);
-            Some(o)
+            o
         }
         Err(e) => {
-            warn!("Failed to load offsets: {}", e);
-            None
+            warn!("Failed to load offsets: {}, using defaults", e);
+            Default::default()
         }
     };
+
+    // Create Reflux instance
+    let mut reflux = Reflux::new(config, offsets);
+
+    // Load tracker
+    if let Err(e) = reflux.load_tracker(&args.tracker) {
+        warn!("Failed to load tracker: {}", e);
+    }
 
     // Main loop: wait for process
     loop {
@@ -63,8 +81,13 @@ fn main() -> Result<()> {
                     process.base_address
                 );
 
-                if let Err(e) = run_tracker(&process, &config, offsets.as_ref()) {
+                if let Err(e) = reflux.run(&process) {
                     error!("Tracker error: {}", e);
+                }
+
+                // Save tracker on disconnect
+                if let Err(e) = reflux.save_tracker(&args.tracker) {
+                    error!("Failed to save tracker: {}", e);
                 }
 
                 info!("Process disconnected, waiting for reconnect...");
@@ -76,37 +99,4 @@ fn main() -> Result<()> {
 
         thread::sleep(Duration::from_secs(5));
     }
-}
-
-fn run_tracker(
-    process: &ProcessHandle,
-    _config: &Config,
-    _offsets: Option<&reflux_core::OffsetsCollection>,
-) -> Result<()> {
-    let reader = MemoryReader::new(process);
-    let mut last_state = GameState::Unknown;
-
-    info!("Starting tracker loop...");
-
-    loop {
-        // Check if process is still alive by trying to read memory
-        if reader.read_bytes(process.base_address, 4).is_err() {
-            info!("Process terminated");
-            break;
-        }
-
-        // TODO: Implement game state detection and data extraction
-        // This requires proper offset values to read game memory
-
-        let current_state = GameState::Unknown; // Placeholder
-
-        if current_state != last_state {
-            info!("Game state changed: {:?} -> {:?}", last_state, current_state);
-            last_state = current_state;
-        }
-
-        thread::sleep(Duration::from_millis(100));
-    }
-
-    Ok(())
 }
