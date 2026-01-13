@@ -3,6 +3,9 @@
 use crate::error::{Error, Result};
 
 #[cfg(target_os = "windows")]
+use tracing::warn;
+
+#[cfg(target_os = "windows")]
 use std::ffi::OsString;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStringExt;
@@ -42,6 +45,9 @@ impl ProcessHandle {
     }
 
     pub fn open(pid: u32) -> Result<Self> {
+        // SAFETY: OpenProcess is called with valid flags (PROCESS_QUERY_INFORMATION | PROCESS_VM_READ)
+        // and a process ID obtained from CreateToolhelp32Snapshot. The returned handle is managed
+        // by this struct and closed in Drop.
         let handle = unsafe {
             OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)
                 .map_err(|e| Error::ProcessOpenFailed(e.to_string()))?
@@ -80,13 +86,19 @@ impl ProcessHandle {
 impl Drop for ProcessHandle {
     fn drop(&mut self) {
         if !self.handle.is_invalid() {
-            let _ = unsafe { CloseHandle(self.handle) };
+            // SAFETY: self.handle is a valid handle obtained from OpenProcess and has not been
+            // closed yet. CloseHandle is safe to call on a valid handle.
+            if let Err(e) = unsafe { CloseHandle(self.handle) } {
+                warn!("Failed to close process handle: {}", e);
+            }
         }
     }
 }
 
 #[cfg(target_os = "windows")]
 fn find_process_id(name: &str) -> Result<u32> {
+    // SAFETY: CreateToolhelp32Snapshot with TH32CS_SNAPPROCESS is safe to call.
+    // The returned handle is closed at the end of this function.
     let snapshot = unsafe {
         CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
             .map_err(|e| Error::ProcessNotFound(e.to_string()))?
@@ -97,6 +109,9 @@ fn find_process_id(name: &str) -> Result<u32> {
         ..Default::default()
     };
 
+    // SAFETY: Process32FirstW and Process32NextW are safe to call with a valid snapshot handle
+    // and properly initialized PROCESSENTRY32W structure. The szExeFile array is always
+    // null-terminated or we find the end of the array.
     let result = unsafe {
         if Process32FirstW(snapshot, &mut entry).is_ok() {
             loop {
@@ -124,6 +139,7 @@ fn find_process_id(name: &str) -> Result<u32> {
         )))
     };
 
+    // SAFETY: snapshot is a valid handle from CreateToolhelp32Snapshot
     let _ = unsafe { CloseHandle(snapshot) };
     result
 }
@@ -133,6 +149,9 @@ fn get_module_info(handle: HANDLE) -> Result<(u64, u32)> {
     let mut modules = [windows::Win32::Foundation::HMODULE::default(); 1024];
     let mut needed: u32 = 0;
 
+    // SAFETY: EnumProcessModulesEx is called with a valid process handle from OpenProcess,
+    // and the modules array is large enough to hold typical module counts. The needed
+    // parameter receives the actual bytes required.
     unsafe {
         EnumProcessModulesEx(
             handle,
@@ -151,6 +170,8 @@ fn get_module_info(handle: HANDLE) -> Result<(u64, u32)> {
     }
 
     let mut info = MODULEINFO::default();
+    // SAFETY: GetModuleInformation is called with a valid process handle and the first module
+    // handle from the enumeration. The info struct is properly sized.
     unsafe {
         GetModuleInformation(
             handle,

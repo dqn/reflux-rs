@@ -1,3 +1,5 @@
+use tracing::warn;
+
 use crate::error::{Error, Result};
 use crate::offset::OffsetsCollection;
 use std::fs;
@@ -44,7 +46,9 @@ fn parse_offsets(content: &str) -> Result<OffsetsCollection> {
                 "playsettings" => offsets.play_settings = parsed_value,
                 "unlockdata" => offsets.unlock_data = parsed_value,
                 "currentsong" => offsets.current_song = parsed_value,
-                _ => {}
+                _ => {
+                    warn!("Unknown offset key: '{}' (value: {})", key, value);
+                }
             }
         }
     }
@@ -54,8 +58,11 @@ fn parse_offsets(content: &str) -> Result<OffsetsCollection> {
 
 fn parse_hex_value(value: &str) -> Result<u64> {
     let value = value.trim();
-    let value = value.strip_prefix("0x").unwrap_or(value);
-    let value = value.strip_prefix("0X").unwrap_or(value);
+    // Strip hex prefix (case-insensitive), only once
+    let value = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .unwrap_or(value);
 
     u64::from_str_radix(value, 16)
         .map_err(|e| Error::InvalidOffset(format!("Failed to parse '{}': {}", value, e)))

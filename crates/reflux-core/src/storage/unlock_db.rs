@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use tracing::warn;
+
 use crate::error::Result;
 use crate::game::UnlockData;
 
@@ -29,7 +31,7 @@ impl UnlockDb {
     pub fn parse(content: &str) -> Result<Self> {
         let mut entries = HashMap::new();
 
-        for line in content.lines() {
+        for (line_num, line) in content.lines().enumerate() {
             let line = line.trim();
             if line.is_empty() {
                 continue;
@@ -37,9 +39,27 @@ impl UnlockDb {
 
             let parts: Vec<&str> = line.split(',').collect();
             if parts.len() >= 3 {
-                let song_id: u32 = parts[0].trim().parse().unwrap_or(0);
-                let unlock_type: i32 = parts[1].trim().parse().unwrap_or(0);
-                let unlocks: i32 = parts[2].trim().parse().unwrap_or(0);
+                let song_id: u32 = match parts[0].trim().parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        warn!("unlock_db line {}: failed to parse song_id '{}'", line_num + 1, parts[0]);
+                        continue;
+                    }
+                };
+                let unlock_type: i32 = match parts[1].trim().parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        warn!("unlock_db line {}: failed to parse unlock_type '{}', using 0", line_num + 1, parts[1]);
+                        0
+                    }
+                };
+                let unlocks: i32 = match parts[2].trim().parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        warn!("unlock_db line {}: failed to parse unlocks '{}', using 0", line_num + 1, parts[2]);
+                        0
+                    }
+                };
                 entries.insert(song_id, (unlock_type, unlocks));
             }
         }

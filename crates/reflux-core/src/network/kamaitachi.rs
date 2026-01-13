@@ -28,13 +28,13 @@ pub struct KamaitachiClient {
 }
 
 impl KamaitachiClient {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
-            .expect("Failed to create HTTP client");
+            .map_err(|e| Error::NetworkError(format!("Failed to create HTTP client: {}", e)))?;
 
-        Self { client }
+        Ok(Self { client })
     }
 
     pub async fn search_song(&self, title: &str) -> Result<Option<KamaitachiSong>> {
@@ -90,8 +90,3 @@ impl KamaitachiClient {
     }
 }
 
-impl Default for KamaitachiClient {
-    fn default() -> Self {
-        Self::new()
-    }
-}
