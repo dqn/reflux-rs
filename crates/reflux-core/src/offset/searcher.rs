@@ -119,10 +119,10 @@ impl<'a> OffsetSearcher<'a> {
             }
         }
 
-        // Phase 3: Relative offset search (low-medium reliability)
-        debug!("Phase 3: Searching relative offsets...");
+        // Phase 3: Nearby search (search near found offsets)
+        debug!("Phase 3: Searching nearby offsets...");
 
-        match self.search_play_data_relative(offsets.judge_data) {
+        match self.search_play_data_near_settings(offsets.play_settings) {
             Ok(addr) => {
                 offsets.play_data = addr;
                 info!("  PlayData: 0x{:X}", offsets.play_data);
@@ -133,7 +133,7 @@ impl<'a> OffsetSearcher<'a> {
             }
         }
 
-        match self.search_current_song_relative(offsets.play_data) {
+        match self.search_current_song_near_judge(offsets.judge_data, offsets.play_data) {
             Ok(addr) => {
                 offsets.current_song = addr;
                 info!("  CurrentSong: 0x{:X}", offsets.current_song);
@@ -765,38 +765,32 @@ impl<'a> OffsetSearcher<'a> {
         ))
     }
 
-    /// Search for PlayData using relative offset from JudgeData
+    /// Search for PlayData near PlaySettings
     ///
-    /// PlayData is typically located 2-3 MB before JudgeData.
-    fn search_play_data_relative(&mut self, judge_data: u64) -> Result<u64> {
-        debug!("Searching PlayData with relative offset...");
+    /// PlayData is typically located close to PlaySettings.
+    fn search_play_data_near_settings(&mut self, play_settings: u64) -> Result<u64> {
+        debug!("Searching PlayData near PlaySettings...");
 
-        // Expected distance: JudgeData - PlayData ≈ 2.8MB (based on historical data)
-        let expected_distance: i64 = 2_800_000;
-        let tolerance: i64 = 1_000_000;
-
-        let search_start = judge_data.saturating_sub((expected_distance + tolerance) as u64);
-        let search_end = judge_data.saturating_sub((expected_distance - tolerance) as u64);
+        // Search within 100KB of PlaySettings
+        let range = 100_000u64;
+        let search_start = play_settings.saturating_sub(range);
+        let search_end = play_settings + range;
 
         debug!(
             "  Search range: 0x{:X} - 0x{:X}",
             search_start, search_end
         );
 
-        // Load the search region
-        let center = (search_start + search_end) / 2;
-        let range = ((search_end - search_start) / 2) as usize + INITIAL_SEARCH_SIZE;
-        self.load_buffer_around(center, range)?;
+        self.load_buffer_around(play_settings, range as usize * 2)?;
 
         // Search for PlayData structure pattern
-        // In song select state, PlayData may contain zeros or last played data
-        // We look for a structure with: song_id (small int), difficulty (0-9), zeros
+        // In song select state, PlayData contains current song info (song_id > 0)
         for offset in (search_start..search_end).step_by(4) {
             let song_id = self.reader.read_i32(offset).unwrap_or(-1);
             let difficulty = self.reader.read_i32(offset + 4).unwrap_or(-1);
 
-            // Validate: song_id in valid range (0-50000), difficulty (0-9)
-            if !(0..=50000).contains(&song_id) {
+            // song_id must be > 0 (actual song selected) and in valid range
+            if !(1..=50000).contains(&song_id) {
                 continue;
             }
             if !(0..=9).contains(&difficulty) {
@@ -822,45 +816,40 @@ impl<'a> OffsetSearcher<'a> {
         }
 
         Err(Error::OffsetSearchFailed(
-            "PlayData not found with relative search".to_string(),
+            "PlayData not found near PlaySettings".to_string(),
         ))
     }
 
-    /// Search for CurrentSong using relative offset from PlayData
+    /// Search for CurrentSong near JudgeData
     ///
-    /// CurrentSong is typically located 2-3 MB after PlayData.
-    fn search_current_song_relative(&mut self, play_data: u64) -> Result<u64> {
-        debug!("Searching CurrentSong with relative offset...");
+    /// CurrentSong is typically located near JudgeData (different from PlayData).
+    fn search_current_song_near_judge(&mut self, judge_data: u64, play_data: u64) -> Result<u64> {
+        debug!("Searching CurrentSong near JudgeData...");
 
-        // Expected distance: CurrentSong - PlayData ≈ 2.8MB
-        let expected_distance: i64 = 2_800_000;
-        let tolerance: i64 = 1_000_000;
-
-        let search_start = play_data + (expected_distance - tolerance) as u64;
-        let search_end = play_data + (expected_distance + tolerance) as u64;
+        // Search within 500KB of JudgeData
+        let range = 500_000u64;
+        let search_start = judge_data.saturating_sub(range);
+        let search_end = judge_data + range;
 
         debug!(
             "  Search range: 0x{:X} - 0x{:X}",
             search_start, search_end
         );
 
-        // Load the search region
-        let center = (search_start + search_end) / 2;
-        let range = ((search_end - search_start) / 2) as usize + INITIAL_SEARCH_SIZE;
-        self.load_buffer_around(center, range)?;
+        self.load_buffer_around(judge_data, range as usize * 2)?;
 
         // Search for CurrentSong structure pattern
-        // Similar to PlayData: song_id, difficulty
         for offset in (search_start..search_end).step_by(4) {
+            // Skip if this is PlayData
             if offset == play_data {
-                continue; // Skip PlayData itself
+                continue;
             }
 
             let song_id = self.reader.read_i32(offset).unwrap_or(-1);
             let difficulty = self.reader.read_i32(offset + 4).unwrap_or(-1);
 
-            // Validate: song_id in valid range (0-50000), difficulty (0-9)
-            if !(0..=50000).contains(&song_id) {
+            // song_id must be > 0 (actual song selected) and in valid range
+            if !(1..=50000).contains(&song_id) {
                 continue;
             }
             if !(0..=9).contains(&difficulty) {
@@ -875,7 +864,7 @@ impl<'a> OffsetSearcher<'a> {
         }
 
         Err(Error::OffsetSearchFailed(
-            "CurrentSong not found with relative search".to_string(),
+            "CurrentSong not found near JudgeData".to_string(),
         ))
     }
 
