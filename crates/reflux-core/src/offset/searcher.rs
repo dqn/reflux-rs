@@ -767,29 +767,39 @@ impl<'a> OffsetSearcher<'a> {
 
     /// Search for PlayData near PlaySettings
     ///
-    /// PlayData is typically located close to PlaySettings.
+    /// PlayData is typically located about 0x2B0 (688) bytes after PlaySettings.
     fn search_play_data_near_settings(&mut self, play_settings: u64) -> Result<u64> {
         debug!("Searching PlayData near PlaySettings...");
 
-        // Search within 100KB of PlaySettings
-        let range = 100_000u64;
-        let search_start = play_settings.saturating_sub(range);
-        let search_end = play_settings + range;
+        // Historical data shows PlayData is about 0x2B0 bytes after PlaySettings
+        // Search around that expected location first
+        let expected_offset: u64 = 0x2B0;
+        let tolerance: u64 = 10_000;
+
+        let search_start = play_settings + expected_offset.saturating_sub(tolerance);
+        let search_end = play_settings + expected_offset + tolerance;
 
         debug!(
-            "  Search range: 0x{:X} - 0x{:X}",
-            search_start, search_end
+            "  Search range: 0x{:X} - 0x{:X} (expected at 0x{:X})",
+            search_start,
+            search_end,
+            play_settings + expected_offset
         );
 
-        self.load_buffer_around(play_settings, range as usize * 2)?;
+        self.load_buffer_around(play_settings + expected_offset, tolerance as usize * 2)?;
 
         // Search for PlayData structure pattern
-        // In song select state, PlayData contains current song info (song_id > 0)
+        // PlayData contains: song_id, difficulty, ex_score, miss_count, clear_type, etc.
         for offset in (search_start..search_end).step_by(4) {
+            // Skip addresses too close to PlaySettings (within 256 bytes)
+            if offset < play_settings + 256 {
+                continue;
+            }
+
             let song_id = self.reader.read_i32(offset).unwrap_or(-1);
             let difficulty = self.reader.read_i32(offset + 4).unwrap_or(-1);
 
-            // song_id must be > 0 (actual song selected) and in valid range
+            // song_id must be in valid range (1-50000 for actual songs)
             if !(1..=50000).contains(&song_id) {
                 continue;
             }
@@ -797,20 +807,57 @@ impl<'a> OffsetSearcher<'a> {
                 continue;
             }
 
-            // Additional check: next few fields should be small integers
-            let field3 = self.reader.read_i32(offset + 8).unwrap_or(-1);
-            let field4 = self.reader.read_i32(offset + 12).unwrap_or(-1);
+            // Additional validation: check ex_score and miss_count fields
+            // These should be reasonable values (0-10000 range)
+            let ex_score = self.reader.read_i32(offset + 8).unwrap_or(-1);
+            let miss_count = self.reader.read_i32(offset + 12).unwrap_or(-1);
 
-            if !(0..=100000).contains(&field3) {
+            if !(0..=10000).contains(&ex_score) {
                 continue;
             }
-            if !(0..=100000).contains(&field4) {
+            if !(0..=3000).contains(&miss_count) {
                 continue;
             }
 
             debug!(
-                "    0x{:X} candidate: song_id={}, difficulty={}, field3={}, field4={}",
-                offset, song_id, difficulty, field3, field4
+                "    0x{:X} candidate: song_id={}, difficulty={}, ex_score={}, miss_count={}",
+                offset, song_id, difficulty, ex_score, miss_count
+            );
+            return Ok(offset);
+        }
+
+        // Fallback: wider search if expected location fails
+        debug!("  Expected location search failed, trying wider range...");
+        let range = 100_000u64;
+        let search_start = play_settings + 256; // Skip PlaySettings area
+        let search_end = play_settings + range;
+
+        self.load_buffer_around(play_settings + range / 2, range as usize)?;
+
+        for offset in (search_start..search_end).step_by(4) {
+            let song_id = self.reader.read_i32(offset).unwrap_or(-1);
+            let difficulty = self.reader.read_i32(offset + 4).unwrap_or(-1);
+
+            if !(1..=50000).contains(&song_id) {
+                continue;
+            }
+            if !(0..=9).contains(&difficulty) {
+                continue;
+            }
+
+            let ex_score = self.reader.read_i32(offset + 8).unwrap_or(-1);
+            let miss_count = self.reader.read_i32(offset + 12).unwrap_or(-1);
+
+            if !(0..=10000).contains(&ex_score) {
+                continue;
+            }
+            if !(0..=3000).contains(&miss_count) {
+                continue;
+            }
+
+            debug!(
+                "    0x{:X} candidate (fallback): song_id={}, difficulty={}, ex_score={}, miss_count={}",
+                offset, song_id, difficulty, ex_score, miss_count
             );
             return Ok(offset);
         }
@@ -840,25 +887,37 @@ impl<'a> OffsetSearcher<'a> {
 
         // Search for CurrentSong structure pattern
         for offset in (search_start..search_end).step_by(4) {
-            // Skip if this is PlayData
-            if offset == play_data {
+            // Skip if this is PlayData or too close to it
+            let play_data_distance = (offset as i64 - play_data as i64).unsigned_abs();
+            if play_data_distance < 256 {
                 continue;
             }
 
             let song_id = self.reader.read_i32(offset).unwrap_or(-1);
             let difficulty = self.reader.read_i32(offset + 4).unwrap_or(-1);
 
-            // song_id must be > 0 (actual song selected) and in valid range
-            if !(1..=50000).contains(&song_id) {
+            // song_id must be in realistic range (IIDX song IDs start from ~1000)
+            // Also filter out powers of 2 which are likely memory artifacts
+            if !(1000..=50000).contains(&song_id) {
+                continue;
+            }
+            if is_power_of_two(song_id as u32) {
                 continue;
             }
             if !(0..=9).contains(&difficulty) {
                 continue;
             }
 
+            // Additional validation: check that the third field is reasonable
+            // (could be notes count, should be 0-10000 range)
+            let field3 = self.reader.read_i32(offset + 8).unwrap_or(-1);
+            if !(0..=10000).contains(&field3) {
+                continue;
+            }
+
             debug!(
-                "    0x{:X} candidate: song_id={}, difficulty={}",
-                offset, song_id, difficulty
+                "    0x{:X} candidate: song_id={}, difficulty={}, field3={}",
+                offset, song_id, difficulty, field3
             );
             return Ok(offset);
         }
@@ -955,6 +1014,11 @@ impl<'a> OffsetSearcher<'a> {
 /// Convert i32 values to little-endian byte representation
 pub fn merge_byte_representations(values: &[i32]) -> Vec<u8> {
     values.iter().flat_map(|v| v.to_le_bytes()).collect()
+}
+
+/// Check if a number is a power of two (used to filter out memory artifacts)
+fn is_power_of_two(n: u32) -> bool {
+    n > 0 && (n & (n - 1)) == 0
 }
 
 #[cfg(test)]
