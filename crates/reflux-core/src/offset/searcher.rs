@@ -152,7 +152,9 @@ impl<'a> OffsetSearcher<'a> {
     // Private helper methods
 
     fn load_buffer_around(&mut self, center: u64, distance: usize) -> Result<()> {
-        let start = center.saturating_sub(distance as u64);
+        let base = self.reader.base_address();
+        // Don't go below base address (unmapped memory region)
+        let start = center.saturating_sub(distance as u64).max(base);
         self.buffer_base = start;
         self.buffer = self.reader.read_bytes(start, distance * 2)?;
         Ok(())
