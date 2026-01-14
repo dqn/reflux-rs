@@ -13,8 +13,14 @@ pub struct HttpClient {
 
 impl HttpClient {
     pub fn new(base_url: String, api_key: String) -> Result<Self> {
+        let user_agent = format!(
+            "Reflux-RS/{} ({})",
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::OS
+        );
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
+            .user_agent(user_agent)
             .build()
             .map_err(|e| Error::NetworkError(format!("Failed to create HTTP client: {}", e)))?;
 
@@ -38,9 +44,7 @@ impl HttpClient {
         for attempt in 0..MAX_RETRIES {
             let response = self.client.post(&url).form(&form).send().await?;
 
-            if response.status() == StatusCode::TOO_MANY_REQUESTS
-                && attempt < MAX_RETRIES - 1
-            {
+            if response.status() == StatusCode::TOO_MANY_REQUESTS && attempt < MAX_RETRIES - 1 {
                 let delay = response
                     .headers()
                     .get("Retry-After")
@@ -70,8 +74,76 @@ impl HttpClient {
     }
 
     pub async fn get(&self, url: &str) -> Result<String> {
-        let response = self.client.get(url).send().await?.error_for_status()?;
-        let text = response.text().await?;
-        Ok(text)
+        const MAX_RETRIES: u32 = 3;
+        let mut backoff_ms = 100u64;
+
+        for attempt in 0..MAX_RETRIES {
+            let result = self.client.get(url).send().await;
+
+            match result {
+                Ok(response) => {
+                    // Retry on server errors (5xx)
+                    if response.status().is_server_error() && attempt < MAX_RETRIES - 1 {
+                        warn!(
+                            "Server error {} (attempt {}/{}), retrying in {}ms",
+                            response.status(),
+                            attempt + 1,
+                            MAX_RETRIES,
+                            backoff_ms
+                        );
+                        tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                        backoff_ms = (backoff_ms * 2).min(5000);
+                        continue;
+                    }
+
+                    // Retry on rate limiting
+                    if response.status() == StatusCode::TOO_MANY_REQUESTS
+                        && attempt < MAX_RETRIES - 1
+                    {
+                        let delay = response
+                            .headers()
+                            .get("Retry-After")
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|s| s.parse::<u64>().ok())
+                            .map(|secs| secs * 1000)
+                            .unwrap_or(backoff_ms);
+
+                        warn!(
+                            "Rate limited (attempt {}/{}), retrying in {}ms",
+                            attempt + 1,
+                            MAX_RETRIES,
+                            delay
+                        );
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
+                        backoff_ms = (backoff_ms * 2).min(5000);
+                        continue;
+                    }
+
+                    let response = response.error_for_status()?;
+                    return Ok(response.text().await?);
+                }
+                Err(e) if e.is_timeout() || e.is_connect() => {
+                    // Retry on connection errors and timeouts
+                    if attempt < MAX_RETRIES - 1 {
+                        warn!(
+                            "Connection error (attempt {}/{}): {}, retrying in {}ms",
+                            attempt + 1,
+                            MAX_RETRIES,
+                            e,
+                            backoff_ms
+                        );
+                        tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                        backoff_ms = (backoff_ms * 2).min(5000);
+                        continue;
+                    }
+                    return Err(e.into());
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        Err(Error::NetworkError(
+            "Max retries exceeded for GET request".to_string(),
+        ))
     }
 }

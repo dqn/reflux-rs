@@ -23,7 +23,9 @@ impl Default for UpdateConfig {
     fn default() -> Self {
         Self {
             update_files: true,
-            update_server: String::from("https://reflux.nolife-cyborg.com"),
+            update_server: String::from(
+                "https://raw.githubusercontent.com/olji/Reflux/master/Reflux",
+            ),
         }
     }
 }

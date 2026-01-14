@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -364,12 +364,18 @@ impl Reflux {
                     }
                     // Data not ready yet, continue polling
                     if attempt == MAX_POLL_ATTEMPTS - 1 {
-                        warn!("Play data notes count is zero after {} attempts", MAX_POLL_ATTEMPTS);
+                        warn!(
+                            "Play data notes count is zero after {} attempts",
+                            MAX_POLL_ATTEMPTS
+                        );
                     }
                 }
                 Err(e) => {
                     if attempt == MAX_POLL_ATTEMPTS - 1 {
-                        error!("Failed to fetch play data after {} attempts: {}", MAX_POLL_ATTEMPTS, e);
+                        error!(
+                            "Failed to fetch play data after {} attempts: {}",
+                            MAX_POLL_ATTEMPTS, e
+                        );
                     }
                 }
             }
@@ -460,10 +466,9 @@ impl Reflux {
             } else {
                 "CLEAR!"
             };
-            let _ = self.stream_output.write_marquee(&format!(
-                "{} {}",
-                play_data.chart.title_english, status
-            ));
+            let _ = self
+                .stream_output
+                .write_marquee(&format!("{} {}", play_data.chart.title_english, status));
         }
     }
 
@@ -536,17 +541,18 @@ impl Reflux {
         }
 
         // Read current unlock state
-        let current_state = match get_unlock_states(reader, self.offsets.unlock_data, &self.game_data.song_db)
-        {
-            Ok(state) => state,
-            Err(e) => {
-                error!("Failed to read unlock state: {}", e);
-                return;
-            }
-        };
+        let current_state =
+            match get_unlock_states(reader, self.offsets.unlock_data, &self.game_data.song_db) {
+                Ok(state) => state,
+                Err(e) => {
+                    error!("Failed to read unlock state: {}", e);
+                    return;
+                }
+            };
 
         // Detect changes
-        let changes = crate::game::detect_unlock_changes(&self.game_data.unlock_state, &current_state);
+        let changes =
+            crate::game::detect_unlock_changes(&self.game_data.unlock_state, &current_state);
 
         if !changes.is_empty() {
             info!("Detected {} unlock state changes", changes.len());
@@ -587,8 +593,7 @@ impl Reflux {
     fn fetch_play_data(&self, reader: &MemoryReader) -> Result<PlayData> {
         // Read basic play data
         let song_id = reader.read_i32(self.offsets.play_data + play_offsets::SONG_ID)? as u32;
-        let difficulty_val =
-            reader.read_i32(self.offsets.play_data + play_offsets::DIFFICULTY)?;
+        let difficulty_val = reader.read_i32(self.offsets.play_data + play_offsets::DIFFICULTY)?;
         let lamp_val = reader.read_i32(self.offsets.play_data + play_offsets::LAMP)?;
 
         let difficulty = Difficulty::from_u8(difficulty_val as u8).unwrap_or(Difficulty::SpN);
@@ -808,7 +813,8 @@ impl Reflux {
             return Ok(());
         }
 
-        self.game_data.unlock_state = get_unlock_states(reader, self.offsets.unlock_data, &self.game_data.song_db)?;
+        self.game_data.unlock_state =
+            get_unlock_states(reader, self.offsets.unlock_data, &self.game_data.song_db)?;
         info!(
             "Loaded unlock state from memory ({} entries)",
             self.game_data.unlock_state.len()
@@ -872,7 +878,10 @@ impl Reflux {
                 };
 
                 // Check unlock type change
-                if self.unlock_db.has_unlock_type_changed(song_id, current_type) {
+                if self
+                    .unlock_db
+                    .has_unlock_type_changed(song_id, current_type)
+                {
                     info!("Unlock type changed for {:05}: updating remote", song_id);
                     let song_id_str = format!("{:05}", song_id);
                     if let Err(e) = api
@@ -884,8 +893,14 @@ impl Reflux {
                 }
 
                 // Check unlock state change
-                if self.unlock_db.has_unlocks_changed(song_id, unlock_data.unlocks) {
-                    info!("Unlock state changed for {:05}: reporting to remote", song_id);
+                if self
+                    .unlock_db
+                    .has_unlocks_changed(song_id, unlock_data.unlocks)
+                {
+                    info!(
+                        "Unlock state changed for {:05}: reporting to remote",
+                        song_id
+                    );
                     let song_id_str = format!("{:05}", song_id);
                     if let Err(e) = api.report_unlock(&song_id_str, unlock_data.unlocks).await {
                         error!("Failed to report unlock for {:05}: {}", song_id, e);
@@ -902,12 +917,7 @@ impl Reflux {
     }
 
     /// Upload song info and charts to remote server
-    async fn upload_song_info(
-        &self,
-        api: &RefluxApi,
-        song_id: u32,
-        song: &SongInfo,
-    ) -> Result<()> {
+    async fn upload_song_info(&self, api: &RefluxApi, song_id: u32, song: &SongInfo) -> Result<()> {
         let song_id_str = format!("{:05}", song_id);
         let unlock_type = self
             .game_data

@@ -1,16 +1,52 @@
 use anyhow::Result;
 use clap::Parser;
 use reflux_core::{
-    Config, CustomTypes, MemoryReader, ProcessHandle, Reflux, RefluxApi, ScoreMap,
-    export_song_list, fetch_song_database, load_offsets,
+    Config, CustomTypes, MemoryReader, OffsetSearcher, OffsetsCollection, ProcessHandle, Reflux,
+    RefluxApi, ScoreMap, SearchPrompter, export_song_list, fetch_song_database, load_offsets,
+    save_offsets,
 };
+use std::io::{self, Write};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
+
+/// CLI prompter for interactive offset search
+struct CliPrompter;
+
+impl SearchPrompter for CliPrompter {
+    fn prompt_continue(&self, message: &str) {
+        println!("{}", message);
+        let _ = io::stdout().flush();
+        let mut input = String::new();
+        let _ = io::stdin().read_line(&mut input);
+    }
+
+    fn prompt_number(&self, prompt: &str) -> u32 {
+        loop {
+            print!("{}", prompt);
+            let _ = io::stdout().flush();
+            let mut input = String::new();
+            if io::stdin().read_line(&mut input).is_ok()
+                && let Ok(num) = input.trim().parse()
+            {
+                return num;
+            }
+            println!("Invalid input, please enter a number");
+        }
+    }
+
+    fn display_message(&self, message: &str) {
+        info!("{}", message);
+    }
+
+    fn display_warning(&self, message: &str) {
+        warn!("{}", message);
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "reflux")]
@@ -156,9 +192,44 @@ async fn main() -> Result<()> {
 
                 // Check if offsets are valid before proceeding
                 if !reflux.offsets().is_valid() {
-                    error!("Cannot proceed with invalid offsets. Please provide valid offsets.txt or enable auto-update.");
-                    thread::sleep(Duration::from_secs(5));
-                    continue;
+                    warn!("Invalid offsets detected. Starting interactive offset search...");
+
+                    // Get the game version for the new offsets
+                    let version = match reflux.check_game_version(&reader, process.base_address) {
+                        Ok((Some(v), _)) => v,
+                        _ => String::from("unknown"),
+                    };
+
+                    // Run interactive offset search
+                    let mut searcher = OffsetSearcher::new(&reader);
+                    let prompter = CliPrompter;
+
+                    // Use default offsets as hints (they contain typical memory regions)
+                    let hint_offsets = OffsetsCollection::default();
+
+                    match searcher.interactive_search(&prompter, &hint_offsets, &version) {
+                        Ok(result) => {
+                            info!("Offset search completed successfully!");
+
+                            // Save the new offsets
+                            if let Err(e) = save_offsets(&args.offsets, &result.offsets) {
+                                error!("Failed to save offsets: {}", e);
+                            } else {
+                                info!("Saved new offsets to {:?}", args.offsets);
+                            }
+
+                            // Update reflux with new offsets
+                            reflux = Reflux::new(reflux.config().clone(), result.offsets);
+                        }
+                        Err(e) => {
+                            error!("Offset search failed: {}", e);
+                            error!(
+                                "Cannot proceed with invalid offsets. Please provide valid offsets.txt or run offset search again."
+                            );
+                            thread::sleep(Duration::from_secs(5));
+                            continue;
+                        }
+                    }
                 }
 
                 // Load song database from game memory

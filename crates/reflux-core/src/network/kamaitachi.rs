@@ -89,4 +89,3 @@ impl KamaitachiClient {
         Ok(self.search_song_with_retry(title).await?.map(|s| s.id))
     }
 }
-

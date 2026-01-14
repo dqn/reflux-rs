@@ -175,7 +175,10 @@ pub fn format_post_form(play_data: &PlayData, api_key: &str) -> HashMap<String, 
     let mut form = HashMap::new();
 
     form.insert("apikey".to_string(), api_key.to_string());
-    form.insert("songid".to_string(), format!("{:05}", play_data.chart.song_id));
+    form.insert(
+        "songid".to_string(),
+        format!("{:05}", play_data.chart.song_id),
+    );
     form.insert("title".to_string(), play_data.chart.title.clone());
     form.insert("title2".to_string(), play_data.chart.title_english.clone());
     form.insert("bpm".to_string(), play_data.chart.bpm.clone());
@@ -513,10 +516,7 @@ fn generate_tracker_entry(
 ///
 /// Format: id, title, title2 (English), artist, genre
 /// Useful for checking encoding issues
-pub fn export_song_list<P: AsRef<Path>>(
-    path: P,
-    song_db: &HashMap<u32, SongInfo>,
-) -> Result<()> {
+pub fn export_song_list<P: AsRef<Path>>(path: P, song_db: &HashMap<u32, SongInfo>) -> Result<()> {
     let mut lines = vec!["id\ttitle\ttitle2\tartist\tgenre".to_string()];
 
     // Sort by song ID

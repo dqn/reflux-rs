@@ -77,7 +77,8 @@ impl SongInfo {
         let title_english =
             decode_shift_jis(&buffer[Self::TITLE_ENGLISH_OFFSET..Self::GENRE_OFFSET]);
         let genre = decode_shift_jis(&buffer[Self::GENRE_OFFSET..Self::ARTIST_OFFSET]);
-        let artist = decode_shift_jis(&buffer[Self::ARTIST_OFFSET..Self::ARTIST_OFFSET + Self::SLAB]);
+        let artist =
+            decode_shift_jis(&buffer[Self::ARTIST_OFFSET..Self::ARTIST_OFFSET + Self::SLAB]);
 
         // Parse folder (1 byte)
         let folder = buffer[Self::FOLDER_OFFSET] as i32;
@@ -151,7 +152,10 @@ fn decode_shift_jis(bytes: &[u8]) -> String {
 
     let (decoded, _, had_errors) = SHIFT_JIS.decode(bytes);
     if had_errors {
-        warn!("Shift-JIS decoding had errors for bytes: {:?}", &bytes[..bytes.len().min(20)]);
+        warn!(
+            "Shift-JIS decoding had errors for bytes: {:?}",
+            &bytes[..bytes.len().min(20)]
+        );
     }
     decoded.into_owned()
 }

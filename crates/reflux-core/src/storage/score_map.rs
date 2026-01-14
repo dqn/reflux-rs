@@ -165,8 +165,11 @@ impl ScoreMap {
             score_data.score[difficulty_index] = node.score;
             // INFINITAS uses u32::MAX as sentinel value to indicate miss_count data is unavailable
             // (e.g., for legacy scores or when the game doesn't track this information)
-            score_data.miss_count[difficulty_index] =
-                if node.miss_count == u32::MAX { None } else { Some(node.miss_count) };
+            score_data.miss_count[difficulty_index] = if node.miss_count == u32::MAX {
+                None
+            } else {
+                Some(node.miss_count)
+            };
         }
 
         Ok(result)
@@ -224,7 +227,9 @@ impl ScoreMap {
     }
 
     pub fn get_or_insert(&mut self, song_id: u32) -> &mut ScoreData {
-        self.scores.entry(song_id).or_insert_with(|| ScoreData::new(song_id))
+        self.scores
+            .entry(song_id)
+            .or_insert_with(|| ScoreData::new(song_id))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&u32, &ScoreData)> {

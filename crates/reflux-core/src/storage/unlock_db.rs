@@ -42,21 +42,33 @@ impl UnlockDb {
                 let song_id: u32 = match parts[0].trim().parse() {
                     Ok(v) => v,
                     Err(_) => {
-                        warn!("unlock_db line {}: failed to parse song_id '{}'", line_num + 1, parts[0]);
+                        warn!(
+                            "unlock_db line {}: failed to parse song_id '{}'",
+                            line_num + 1,
+                            parts[0]
+                        );
                         continue;
                     }
                 };
                 let unlock_type: i32 = match parts[1].trim().parse() {
                     Ok(v) => v,
                     Err(_) => {
-                        warn!("unlock_db line {}: failed to parse unlock_type '{}', using 0", line_num + 1, parts[1]);
+                        warn!(
+                            "unlock_db line {}: failed to parse unlock_type '{}', using 0",
+                            line_num + 1,
+                            parts[1]
+                        );
                         0
                     }
                 };
                 let unlocks: i32 = match parts[2].trim().parse() {
                     Ok(v) => v,
                     Err(_) => {
-                        warn!("unlock_db line {}: failed to parse unlocks '{}', using 0", line_num + 1, parts[2]);
+                        warn!(
+                            "unlock_db line {}: failed to parse unlocks '{}', using 0",
+                            line_num + 1,
+                            parts[2]
+                        );
                         0
                     }
                 };

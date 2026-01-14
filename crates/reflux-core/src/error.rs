@@ -38,11 +38,28 @@ pub enum Error {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
+    #[error("{0}")]
+    Http(String),
 
     #[error("Encoding error: {0}")]
     EncodingError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<reqwest::Error> for Error {
+    fn from(e: reqwest::Error) -> Self {
+        let message = if e.is_timeout() {
+            format!("Request timed out: {}", e)
+        } else if e.is_connect() {
+            format!("Connection failed: {}", e)
+        } else if e.is_request() {
+            format!("Request error: {}", e)
+        } else if let Some(status) = e.status() {
+            format!("HTTP {} error: {}", status.as_u16(), e)
+        } else {
+            format!("HTTP error: {}", e)
+        };
+        Error::Http(message)
+    }
+}
