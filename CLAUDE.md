@@ -103,5 +103,5 @@ cargo run            # CLI 実行（Windows のみ動作）
 - [x] **INI パーサーのエラー改善** (`config/mod.rs`)
   - エラー型に行番号情報を追加
 
-- [ ] **unwrap() の明確化**
+- [x] **unwrap() の明確化**
   - `expect("reason")` に変更、または安全性コメント追加

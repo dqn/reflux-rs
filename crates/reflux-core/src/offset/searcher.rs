@@ -317,7 +317,8 @@ impl<'a> OffsetSearcher<'a> {
             let matches = self.find_all_matches(pattern);
             if !matches.is_empty() {
                 // Use last match to avoid false positives from earlier regions
-                let last_match = *matches.last().unwrap();
+                // Safety: checked !is_empty() above
+                let last_match = *matches.last().expect("matches is non-empty");
                 let address = last_match.wrapping_add_signed(offset_from_match);
                 debug!(
                     "  Found {} match(es), using last at 0x{:X}",
@@ -434,7 +435,8 @@ impl<'a> OffsetSearcher<'a> {
 
             if !matches.is_empty() {
                 // Use the LAST match (actual current version)
-                let song_list = *matches.last().unwrap();
+                // Safety: checked !is_empty() above
+                let song_list = *matches.last().expect("matches is non-empty");
                 debug!(
                     "  Found {} version string(s), using last at 0x{:X}",
                     matches.len(),
