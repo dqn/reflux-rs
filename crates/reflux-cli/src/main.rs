@@ -157,9 +157,8 @@ async fn main() -> Result<()> {
     }
 
     // Main loop: wait for process (exits on Ctrl+C)
+    info!("Waiting for INFINITAS process...");
     while running.load(Ordering::SeqCst) {
-        info!("Waiting for INFINITAS process...");
-
         match ProcessHandle::find_and_open() {
             Ok(process) => {
                 info!(
