@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 use crate::game::{Difficulty, SongInfo};
@@ -13,11 +15,11 @@ pub struct Chart {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChartInfo {
     pub song_id: u32,
-    pub title: String,
-    pub title_english: String,
-    pub artist: String,
-    pub genre: String,
-    pub bpm: String,
+    pub title: Arc<str>,
+    pub title_english: Arc<str>,
+    pub artist: Arc<str>,
+    pub genre: Arc<str>,
+    pub bpm: Arc<str>,
     pub difficulty: Difficulty,
     pub level: u8,
     pub total_notes: u32,

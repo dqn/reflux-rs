@@ -469,11 +469,11 @@ impl Reflux {
             // Create minimal chart info
             ChartInfo {
                 song_id,
-                title: format!("Song {:05}", song_id),
-                title_english: format!("Song {:05}", song_id),
-                artist: String::new(),
-                genre: String::new(),
-                bpm: String::new(),
+                title: format!("Song {:05}", song_id).into(),
+                title_english: format!("Song {:05}", song_id).into(),
+                artist: "".into(),
+                genre: "".into(),
+                bpm: "".into(),
                 difficulty,
                 level: 0,
                 total_notes: 0,

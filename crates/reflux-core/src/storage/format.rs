@@ -74,15 +74,15 @@ pub fn format_dynamic_tsv_header(config: &LocalRecordConfig) -> String {
 /// Generate dynamic TSV row based on config flags
 pub fn format_dynamic_tsv_row(play_data: &PlayData, config: &LocalRecordConfig) -> String {
     let mut values: Vec<String> = vec![
-        play_data.chart.title.clone(),
+        play_data.chart.title.to_string(),
         play_data.chart.difficulty.short_name().to_string(),
     ];
 
     if config.song_info {
-        values.push(play_data.chart.title_english.clone());
-        values.push(play_data.chart.bpm.clone());
-        values.push(play_data.chart.artist.clone());
-        values.push(play_data.chart.genre.clone());
+        values.push(play_data.chart.title_english.to_string());
+        values.push(play_data.chart.bpm.to_string());
+        values.push(play_data.chart.artist.to_string());
+        values.push(play_data.chart.genre.to_string());
     }
     if config.chart_details {
         values.push(play_data.chart.total_notes.to_string());
@@ -179,11 +179,11 @@ pub fn format_post_form(play_data: &PlayData, api_key: &str) -> HashMap<String, 
         "songid".to_string(),
         format!("{:05}", play_data.chart.song_id),
     );
-    form.insert("title".to_string(), play_data.chart.title.clone());
-    form.insert("title2".to_string(), play_data.chart.title_english.clone());
-    form.insert("bpm".to_string(), play_data.chart.bpm.clone());
-    form.insert("artist".to_string(), play_data.chart.artist.clone());
-    form.insert("genre".to_string(), play_data.chart.genre.clone());
+    form.insert("title".to_string(), play_data.chart.title.to_string());
+    form.insert("title2".to_string(), play_data.chart.title_english.to_string());
+    form.insert("bpm".to_string(), play_data.chart.bpm.to_string());
+    form.insert("artist".to_string(), play_data.chart.artist.to_string());
+    form.insert("genre".to_string(), play_data.chart.genre.to_string());
     form.insert(
         "notecount".to_string(),
         play_data.chart.total_notes.to_string(),
@@ -385,7 +385,7 @@ fn generate_tracker_entry(
     let mut columns = Vec::new();
 
     // Title
-    columns.push(song.title.clone());
+    columns.push(song.title.to_string());
 
     // Type and Label
     let type_name = match unlock.unlock_type {
@@ -545,7 +545,7 @@ pub fn format_play_data_console(play_data: &PlayData) -> String {
 
     // Build key-value pairs
     let pairs = [
-        ("Title", play_data.chart.title.clone()),
+        ("Title", play_data.chart.title.to_string()),
         (
             "Difficulty",
             play_data.chart.difficulty.short_name().to_string(),

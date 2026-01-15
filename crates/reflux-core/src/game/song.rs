@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -11,11 +12,11 @@ use crate::memory::ReadMemory;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SongInfo {
     pub id: u32,
-    pub title: String,
-    pub title_english: String,
-    pub artist: String,
-    pub genre: String,
-    pub bpm: String,
+    pub title: Arc<str>,
+    pub title_english: Arc<str>,
+    pub artist: Arc<str>,
+    pub genre: Arc<str>,
+    pub bpm: Arc<str>,
     pub folder: i32,
     /// Level for each difficulty: SPB, SPN, SPH, SPA, SPL, DPB, DPN, DPH, DPA, DPL
     pub levels: [u8; 10],
@@ -101,10 +102,10 @@ impl SongInfo {
             buffer[Self::BPM_OFFSET + Self::WORD + 3],
         ]);
 
-        let bpm = if bpm_min != 0 && bpm_min != bpm_max {
-            format!("{:03}~{:03}", bpm_min, bpm_max)
+        let bpm: Arc<str> = if bpm_min != 0 && bpm_min != bpm_max {
+            format!("{:03}~{:03}", bpm_min, bpm_max).into()
         } else {
-            format!("{:03}", bpm_max)
+            format!("{:03}", bpm_max).into()
         };
 
         // Parse note counts (40 bytes = 10 x i32)
@@ -142,8 +143,8 @@ impl SongInfo {
     }
 }
 
-/// Decode Shift-JIS bytes to String, removing null terminators
-fn decode_shift_jis(bytes: &[u8]) -> String {
+/// Decode Shift-JIS bytes to Arc<str>, removing null terminators
+fn decode_shift_jis(bytes: &[u8]) -> Arc<str> {
     use encoding_rs::SHIFT_JIS;
 
     // Find null terminator
@@ -157,7 +158,7 @@ fn decode_shift_jis(bytes: &[u8]) -> String {
             &bytes[..bytes.len().min(20)]
         );
     }
-    decoded.into_owned()
+    Arc::from(decoded.into_owned())
 }
 
 /// Fetch entire song database from memory
