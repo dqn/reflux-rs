@@ -20,6 +20,9 @@ pub enum Error {
     #[error("Failed to search offset: {0}")]
     OffsetSearchFailed(String),
 
+    #[error("Cache not found: {0}")]
+    CacheNotFound(String),
+
     #[error("Invalid game state")]
     InvalidGameState,
 
@@ -94,7 +97,12 @@ impl ApiErrorTracker {
     }
 
     /// Record an API error
-    pub fn record(&self, endpoint: impl Into<String>, message: impl Into<String>, context: impl Into<String>) {
+    pub fn record(
+        &self,
+        endpoint: impl Into<String>,
+        message: impl Into<String>,
+        context: impl Into<String>,
+    ) {
         if let Ok(mut errors) = self.errors.lock() {
             errors.push(ApiErrorRecord {
                 endpoint: endpoint.into(),
@@ -162,11 +170,17 @@ mod tests {
         assert_eq!(summary.len(), 2);
 
         // endpoint1 should have 2 errors
-        let endpoint1_count = summary.iter().find(|(e, _)| e == "endpoint1").map(|(_, c)| *c);
+        let endpoint1_count = summary
+            .iter()
+            .find(|(e, _)| e == "endpoint1")
+            .map(|(_, c)| *c);
         assert_eq!(endpoint1_count, Some(2));
 
         // endpoint2 should have 1 error
-        let endpoint2_count = summary.iter().find(|(e, _)| e == "endpoint2").map(|(_, c)| *c);
+        let endpoint2_count = summary
+            .iter()
+            .find(|(e, _)| e == "endpoint2")
+            .map(|(_, c)| *c);
         assert_eq!(endpoint2_count, Some(1));
     }
 

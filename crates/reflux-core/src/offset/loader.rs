@@ -1,9 +1,99 @@
-use tracing::warn;
+use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
 use crate::offset::OffsetsCollection;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Get the cache directory for storing version-specific offsets
+///
+/// Returns `~/.reflux/offsets/` on Unix-like systems
+/// or `%APPDATA%/reflux/offsets/` on Windows
+pub fn get_cache_dir() -> Option<PathBuf> {
+    dirs::data_dir().map(|p| p.join("reflux").join("offsets"))
+}
+
+/// Get the cache file path for a specific version
+pub fn get_cache_path(version: &str) -> Option<PathBuf> {
+    // Sanitize version string for use as filename (remove colons)
+    let filename = version.replace(':', "_");
+    get_cache_dir().map(|dir| dir.join(format!("{}.txt", filename)))
+}
+
+/// Load offsets from the version-specific cache
+pub fn load_from_cache(version: &str) -> Result<OffsetsCollection> {
+    let cache_path = get_cache_path(version)
+        .ok_or_else(|| Error::CacheNotFound("Could not determine cache directory".to_string()))?;
+
+    if !cache_path.exists() {
+        return Err(Error::CacheNotFound(format!(
+            "Cache not found for version: {}",
+            version
+        )));
+    }
+
+    debug!("Loading offsets from cache: {:?}", cache_path);
+    let offsets = load_offsets(&cache_path)?;
+
+    // Verify the cached version matches
+    if offsets.version != version {
+        warn!(
+            "Cache version mismatch: expected '{}', got '{}'",
+            version, offsets.version
+        );
+        return Err(Error::CacheNotFound(format!(
+            "Cache version mismatch for: {}",
+            version
+        )));
+    }
+
+    info!("Loaded offsets from cache for version: {}", version);
+    Ok(offsets)
+}
+
+/// Save offsets to the version-specific cache
+pub fn save_to_cache(offsets: &OffsetsCollection) -> Result<()> {
+    let cache_dir = get_cache_dir()
+        .ok_or_else(|| Error::CacheNotFound("Could not determine cache directory".to_string()))?;
+
+    // Create cache directory if it doesn't exist
+    if !cache_dir.exists() {
+        fs::create_dir_all(&cache_dir)?;
+        debug!("Created cache directory: {:?}", cache_dir);
+    }
+
+    let cache_path = get_cache_path(&offsets.version)
+        .ok_or_else(|| Error::CacheNotFound("Could not determine cache path".to_string()))?;
+
+    debug!("Saving offsets to cache: {:?}", cache_path);
+    save_offsets(&cache_path, offsets)?;
+
+    info!("Saved offsets to cache for version: {}", offsets.version);
+    Ok(())
+}
+
+/// List all cached versions
+pub fn list_cached_versions() -> Result<Vec<String>> {
+    let cache_dir = match get_cache_dir() {
+        Some(dir) if dir.exists() => dir,
+        _ => return Ok(Vec::new()),
+    };
+
+    let mut versions = Vec::new();
+    for entry in fs::read_dir(cache_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "txt")
+            && let Some(stem) = path.file_stem()
+        {
+            // Convert filename back to version format
+            let version = stem.to_string_lossy().replace('_', ":");
+            versions.push(version);
+        }
+    }
+
+    Ok(versions)
+}
 
 pub fn load_offsets<P: AsRef<Path>>(path: P) -> Result<OffsetsCollection> {
     let content = fs::read_to_string(&path)?;

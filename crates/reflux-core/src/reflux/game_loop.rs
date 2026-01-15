@@ -12,15 +12,15 @@ use tracing::{debug, error, info, warn};
 
 use crate::error::Result;
 use crate::game::{
-    check_version_match, find_game_version, get_unlock_state_for_difficulty, get_unlock_states,
     AssistType, ChartInfo, Difficulty, GameState, Grade, Judge, Lamp, PlayData, PlayType, Settings,
-    SongInfo, UnlockType,
+    SongInfo, UnlockType, check_version_match, find_game_version, get_unlock_state_for_difficulty,
+    get_unlock_states,
 };
 use crate::memory::layout::{judge, play, settings, timing};
 use crate::memory::{MemoryReader, ProcessHandle, ReadMemory};
 use crate::network::{AddSongParams, RefluxApi};
 use crate::storage::{
-    export_tracker_tsv, format_play_data_console, format_post_form, ChartKey, TrackerInfo,
+    ChartKey, TrackerInfo, export_tracker_tsv, format_play_data_console, format_post_form,
 };
 
 use super::{Reflux, UpdateResult};

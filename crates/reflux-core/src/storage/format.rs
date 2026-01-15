@@ -180,7 +180,10 @@ pub fn format_post_form(play_data: &PlayData, api_key: &str) -> HashMap<String, 
         format!("{:05}", play_data.chart.song_id),
     );
     form.insert("title".to_string(), play_data.chart.title.to_string());
-    form.insert("title2".to_string(), play_data.chart.title_english.to_string());
+    form.insert(
+        "title2".to_string(),
+        play_data.chart.title_english.to_string(),
+    );
     form.insert("bpm".to_string(), play_data.chart.bpm.to_string());
     form.insert("artist".to_string(), play_data.chart.artist.to_string());
     form.insert("genre".to_string(), play_data.chart.genre.to_string());

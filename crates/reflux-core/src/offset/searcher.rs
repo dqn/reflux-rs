@@ -1,13 +1,16 @@
 use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
-use crate::game::PlayType;
+use crate::game::{PlayType, SongInfo};
 use crate::memory::ReadMemory;
 use crate::memory::layout::{judge, settings};
 use crate::offset::OffsetsCollection;
 
 const INITIAL_SEARCH_SIZE: usize = 2 * 1024 * 1024; // 2MB
 const MAX_SEARCH_SIZE: usize = 300 * 1024 * 1024; // 300MB
+
+/// Minimum number of songs expected in INFINITAS (for validation)
+const MIN_EXPECTED_SONGS: usize = 1000;
 
 /// Judge data for interactive offset searching
 #[derive(Debug, Clone, Default)]
@@ -112,14 +115,17 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             }
         }
 
-        // CurrentSong is at a fixed offset from JudgeData (verified across multiple versions)
-        // See: https://github.com/olji/Reflux/commits/master/Reflux/offsets.txt
-        const CURRENT_SONG_OFFSET_FROM_JUDGE: u64 = 0x1F4; // 500 bytes
-        offsets.current_song = offsets.judge_data + CURRENT_SONG_OFFSET_FROM_JUDGE;
-        info!(
-            "  CurrentSong: 0x{:X} (JudgeData + 0x{:X})",
-            offsets.current_song, CURRENT_SONG_OFFSET_FROM_JUDGE
-        );
+        // Search for CurrentSong near JudgeData (offset varies by version)
+        match self.search_current_song_near_judge(offsets.judge_data, offsets.play_data) {
+            Ok(addr) => {
+                offsets.current_song = addr;
+                info!("  CurrentSong: 0x{:X}", offsets.current_song);
+            }
+            Err(e) => {
+                warn!("  CurrentSong search failed: {}", e);
+                return Err(e);
+            }
+        }
 
         // Phase 4: Validation
         debug!("Phase 4: Validating offsets...");
@@ -414,15 +420,44 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         (pattern_p1, pattern_p2)
     }
 
+    /// Count how many songs can be read from a given song list address.
+    ///
+    /// This is used to validate SongList candidates by checking if they
+    /// actually point to valid song data.
+    fn count_songs_at_address(&self, song_list_addr: u64) -> usize {
+        let mut count = 0;
+        let mut current_position: u64 = 0;
+
+        // Read up to a reasonable limit to avoid infinite loops
+        const MAX_SONGS_TO_CHECK: usize = 5000;
+
+        while count < MAX_SONGS_TO_CHECK {
+            let address = song_list_addr + current_position;
+
+            match SongInfo::read_from_memory(self.reader, address) {
+                Ok(Some(song)) if !song.title.is_empty() => {
+                    count += 1;
+                }
+                _ => {
+                    // End of song list or invalid data
+                    break;
+                }
+            }
+
+            current_position += SongInfo::MEMORY_SIZE as u64;
+        }
+
+        count
+    }
+
     /// Search for version string and song list
     ///
-    /// Note: C# implementation comment says "first two versions appearing are
-    /// referring to 2016-builds, actual version appears later". So we progressively
-    /// expand the search area and use the LAST match found.
+    /// This method searches for "P2D:J:B:A:" pattern and validates candidates
+    /// by actually reading the song list to ensure we found the correct offset.
     fn search_version_and_song_list(&mut self, base_hint: u64) -> Result<(String, u64)> {
         let pattern = b"P2D:J:B:A:";
         let mut search_size = INITIAL_SEARCH_SIZE;
-        let mut last_matches: Vec<u64> = Vec::new();
+        let mut all_matches: Vec<u64> = Vec::new();
 
         // Progressively expand search area until memory read fails
         while search_size <= MAX_SEARCH_SIZE {
@@ -433,10 +468,10 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
             match self.load_buffer_around(base_hint, search_size) {
                 Ok(()) => {
-                    last_matches = self.find_all_matches(pattern);
+                    all_matches = self.find_all_matches(pattern);
                     debug!(
                         "    Found {} match(es) in {}MB",
-                        last_matches.len(),
+                        all_matches.len(),
                         search_size / 1024 / 1024
                     );
                 }
@@ -453,32 +488,65 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             search_size *= 2;
         }
 
-        if last_matches.is_empty() {
+        if all_matches.is_empty() {
             return Err(Error::OffsetSearchFailed(
                 "Version string not found within search area".to_string(),
             ));
         }
 
-        // Use the LAST match (actual current version)
-        let song_list = *last_matches.last().expect("matches is non-empty");
         debug!(
-            "  Using last version string at 0x{:X} (total {} found)",
-            song_list,
-            last_matches.len()
+            "  Found {} total candidate(s), validating by song count...",
+            all_matches.len()
         );
 
-        // Extract version string
-        let pos = (song_list - self.buffer_base) as usize;
-        let end = self.buffer[pos..]
+        // Try candidates from last to first (newer versions tend to appear later)
+        // Validate each by counting readable songs
+        for (idx, &candidate) in all_matches.iter().rev().enumerate() {
+            let song_count = self.count_songs_at_address(candidate);
+            debug!(
+                "    Candidate {} (0x{:X}): {} songs readable",
+                all_matches.len() - idx,
+                candidate,
+                song_count
+            );
+
+            if song_count >= MIN_EXPECTED_SONGS {
+                info!(
+                    "  Validated SongList at 0x{:X} with {} songs",
+                    candidate, song_count
+                );
+
+                // Extract version string
+                let pos = (candidate - self.buffer_base) as usize;
+                let end = self.buffer[pos..]
+                    .iter()
+                    .position(|&b| b == 0)
+                    .map(|p| pos + p)
+                    .unwrap_or(pos + 30);
+
+                let version_bytes = &self.buffer[pos..end.min(pos + 30)];
+                let version = String::from_utf8_lossy(version_bytes).to_string();
+
+                return Ok((version, candidate));
+            }
+        }
+
+        // If no candidate passed validation, return an error with diagnostic info
+        let candidates_info: Vec<String> = all_matches
             .iter()
-            .position(|&b| b == 0)
-            .map(|p| pos + p)
-            .unwrap_or(pos + 30);
+            .rev()
+            .take(5)
+            .map(|&addr| {
+                let count = self.count_songs_at_address(addr);
+                format!("0x{:X} ({} songs)", addr, count)
+            })
+            .collect();
 
-        let version_bytes = &self.buffer[pos..end.min(pos + 30)];
-        let version = String::from_utf8_lossy(version_bytes).to_string();
-
-        Ok((version, song_list))
+        Err(Error::OffsetSearchFailed(format!(
+            "No SongList candidate passed validation (>= {} songs). Candidates: {}",
+            MIN_EXPECTED_SONGS,
+            candidates_info.join(", ")
+        )))
     }
 
     fn find_pattern(&self, pattern: &[u8], ignore_address: Option<u64>) -> Option<usize> {
@@ -860,81 +928,53 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
     /// Search for PlayData near PlaySettings
     ///
-    /// PlayData is typically located about 0x2B0 (688) bytes after PlaySettings.
+    /// PlayData is typically located about 0x2B0-0x2C0 bytes after PlaySettings,
+    /// but this offset varies between game versions.
     fn search_play_data_near_settings(&mut self, play_settings: u64) -> Result<u64> {
         debug!("Searching PlayData near PlaySettings...");
 
-        // Historical data shows PlayData is about 0x2B0 bytes after PlaySettings
-        let expected_offset: u64 = 0x2B0;
-        let expected_addr = play_settings + expected_offset;
+        // Known offsets from different versions (try in order of likelihood)
+        // 2025122400: 0x2C0 (704)
+        // 2024-2025 (before 2025122400): 0x2B0 (688)
+        const KNOWN_OFFSETS: &[u64] = &[0x2C0, 0x2B0];
 
-        debug!("  Expected PlayData at 0x{:X}", expected_addr);
+        // First, try known offsets
+        for &offset in KNOWN_OFFSETS {
+            let addr = play_settings + offset;
+            debug!("  Trying known offset 0x{:X} -> 0x{:X}", offset, addr);
 
-        // First, check the expected location - it may be in initial state (all zeros)
-        // or contain valid play data
-        self.load_buffer_around(expected_addr, 1024)?;
-
-        let song_id = self.reader.read_i32(expected_addr).unwrap_or(-1);
-        let difficulty = self.reader.read_i32(expected_addr + 4).unwrap_or(-1);
-        let ex_score = self.reader.read_i32(expected_addr + 8).unwrap_or(-1);
-        let miss_count = self.reader.read_i32(expected_addr + 12).unwrap_or(-1);
-
-        debug!(
-            "    Values at expected location: song_id={}, difficulty={}, ex_score={}, miss_count={}",
-            song_id, difficulty, ex_score, miss_count
-        );
-
-        // Accept initial state (all zeros) - game hasn't played any song yet
-        let is_initial_state = song_id == 0 && difficulty == 0 && ex_score == 0 && miss_count == 0;
-        // Accept valid play data
-        let is_valid_play_data = (0..=50000).contains(&song_id)
-            && (0..=9).contains(&difficulty)
-            && (0..=10000).contains(&ex_score)
-            && (0..=3000).contains(&miss_count);
-
-        if is_initial_state || is_valid_play_data {
-            debug!(
-                "    0x{:X} accepted ({})",
-                expected_addr,
-                if is_initial_state {
-                    "initial state"
-                } else {
-                    "valid data"
-                }
-            );
-            return Ok(expected_addr);
+            if let Ok(true) = self.validate_play_data_address(addr) {
+                info!(
+                    "  PlayData found at known offset 0x{:X} from PlaySettings",
+                    offset
+                );
+                return Ok(addr);
+            }
         }
 
-        // Fallback: search around expected location
-        debug!("  Expected location invalid, searching nearby...");
-        let tolerance: u64 = 10_000;
-        let search_start = expected_addr.saturating_sub(tolerance);
-        let search_end = expected_addr + tolerance;
+        // Fallback: scan around expected locations
+        debug!("  Known offsets failed, searching nearby...");
+        let center = play_settings + 0x2B0; // Use older offset as center
+        let tolerance: u64 = 100; // 100 bytes should be enough
 
-        self.load_buffer_around(expected_addr, tolerance as usize * 2)?;
+        self.load_buffer_around(center, tolerance as usize * 2)?;
 
-        for offset in (search_start..search_end).step_by(4) {
-            if offset < play_settings + 256 {
-                continue;
-            }
+        // Search from center outward, checking 4-byte aligned addresses
+        for delta in (0..=tolerance).step_by(4) {
+            for &sign in &[1i64, -1i64] {
+                let addr = center.wrapping_add_signed(sign * delta as i64);
+                if addr <= play_settings + 256 {
+                    continue;
+                }
 
-            let song_id = self.reader.read_i32(offset).unwrap_or(-1);
-            let difficulty = self.reader.read_i32(offset + 4).unwrap_or(-1);
-            let ex_score = self.reader.read_i32(offset + 8).unwrap_or(-1);
-            let miss_count = self.reader.read_i32(offset + 12).unwrap_or(-1);
-
-            let is_initial = song_id == 0 && difficulty == 0 && ex_score == 0 && miss_count == 0;
-            let is_valid = (0..=50000).contains(&song_id)
-                && (0..=9).contains(&difficulty)
-                && (0..=10000).contains(&ex_score)
-                && (0..=3000).contains(&miss_count);
-
-            if is_initial || is_valid {
-                debug!(
-                    "    0x{:X} candidate: song_id={}, difficulty={}, ex_score={}, miss_count={}",
-                    offset, song_id, difficulty, ex_score, miss_count
-                );
-                return Ok(offset);
+                if let Ok(true) = self.validate_play_data_address(addr) {
+                    info!(
+                        "  PlayData found at 0x{:X} (offset 0x{:X} from PlaySettings)",
+                        addr,
+                        addr - play_settings
+                    );
+                    return Ok(addr);
+                }
             }
         }
 
@@ -943,61 +983,137 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         ))
     }
 
+    /// Validate if an address contains valid PlayData
+    fn validate_play_data_address(&self, addr: u64) -> Result<bool> {
+        let song_id = self.reader.read_i32(addr).unwrap_or(-1);
+        let difficulty = self.reader.read_i32(addr + 4).unwrap_or(-1);
+        let ex_score = self.reader.read_i32(addr + 8).unwrap_or(-1);
+        let miss_count = self.reader.read_i32(addr + 12).unwrap_or(-1);
+
+        // Accept initial state (all zeros) - game hasn't played any song yet
+        let is_initial_state = song_id == 0 && difficulty == 0 && ex_score == 0 && miss_count == 0;
+
+        // Accept valid play data
+        let is_valid_play_data = (0..=50000).contains(&song_id)
+            && (0..=9).contains(&difficulty)
+            && (0..=10000).contains(&ex_score)
+            && (0..=3000).contains(&miss_count);
+
+        if is_initial_state || is_valid_play_data {
+            debug!(
+                "    0x{:X}: song_id={}, diff={}, ex={}, miss={} ({})",
+                addr,
+                song_id,
+                difficulty,
+                ex_score,
+                miss_count,
+                if is_initial_state { "initial" } else { "valid" }
+            );
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
     /// Search for CurrentSong near JudgeData
     ///
-    /// CurrentSong is typically located near JudgeData (different from PlayData).
+    /// CurrentSong is typically located about 0x1E4-0x1F4 bytes after JudgeData,
+    /// but this offset varies between game versions.
     fn search_current_song_near_judge(&mut self, judge_data: u64, play_data: u64) -> Result<u64> {
         debug!("Searching CurrentSong near JudgeData...");
 
-        // Search within 500KB of JudgeData
-        let range = 500_000u64;
-        let search_start = judge_data.saturating_sub(range);
-        let search_end = judge_data + range;
+        // Known offsets from different versions (try in order of likelihood)
+        // 2025122400: 0x1E4 (484)
+        // 2024-2025 (before 2025122400): 0x1F4 (500)
+        const KNOWN_OFFSETS: &[u64] = &[0x1E4, 0x1F4];
 
-        debug!("  Search range: 0x{:X} - 0x{:X}", search_start, search_end);
+        // First, try known offsets
+        for &offset in KNOWN_OFFSETS {
+            let addr = judge_data + offset;
+            debug!("  Trying known offset 0x{:X} -> 0x{:X}", offset, addr);
 
-        self.load_buffer_around(judge_data, range as usize * 2)?;
-
-        // Search for CurrentSong structure pattern
-        for offset in (search_start..search_end).step_by(4) {
-            // Skip if this is PlayData or too close to it
-            let play_data_distance = (offset as i64 - play_data as i64).unsigned_abs();
+            // Ensure this isn't the same as PlayData
+            let play_data_distance = (addr as i64 - play_data as i64).unsigned_abs();
             if play_data_distance < 256 {
                 continue;
             }
 
-            let song_id = self.reader.read_i32(offset).unwrap_or(-1);
-            let difficulty = self.reader.read_i32(offset + 4).unwrap_or(-1);
+            if let Ok(true) = self.validate_current_song_address(addr) {
+                info!(
+                    "  CurrentSong found at known offset 0x{:X} from JudgeData",
+                    offset
+                );
+                return Ok(addr);
+            }
+        }
 
-            // song_id must be in realistic range (IIDX song IDs start from ~1000)
-            // Also filter out powers of 2 which are likely memory artifacts
-            if !(1000..=50000).contains(&song_id) {
-                continue;
-            }
-            if is_power_of_two(song_id as u32) {
-                continue;
-            }
-            if !(0..=9).contains(&difficulty) {
-                continue;
-            }
+        // Fallback: scan around expected locations
+        debug!("  Known offsets failed, searching nearby...");
+        let center = judge_data + 0x1F0; // Midpoint between known offsets
+        let tolerance: u64 = 100;
 
-            // Additional validation: check that the third field is reasonable
-            // (could be notes count, should be 0-10000 range)
-            let field3 = self.reader.read_i32(offset + 8).unwrap_or(-1);
-            if !(0..=10000).contains(&field3) {
-                continue;
-            }
+        self.load_buffer_around(center, tolerance as usize * 2)?;
 
-            debug!(
-                "    0x{:X} candidate: song_id={}, difficulty={}, field3={}",
-                offset, song_id, difficulty, field3
-            );
-            return Ok(offset);
+        for delta in (0..=tolerance).step_by(4) {
+            for &sign in &[1i64, -1i64] {
+                let addr = center.wrapping_add_signed(sign * delta as i64);
+
+                // Ensure this isn't the same as PlayData
+                let play_data_distance = (addr as i64 - play_data as i64).unsigned_abs();
+                if play_data_distance < 256 {
+                    continue;
+                }
+
+                if let Ok(true) = self.validate_current_song_address(addr) {
+                    info!(
+                        "  CurrentSong found at 0x{:X} (offset 0x{:X} from JudgeData)",
+                        addr,
+                        addr - judge_data
+                    );
+                    return Ok(addr);
+                }
+            }
         }
 
         Err(Error::OffsetSearchFailed(
             "CurrentSong not found near JudgeData".to_string(),
         ))
+    }
+
+    /// Validate if an address contains valid CurrentSong data
+    fn validate_current_song_address(&self, addr: u64) -> Result<bool> {
+        let song_id = self.reader.read_i32(addr).unwrap_or(-1);
+        let difficulty = self.reader.read_i32(addr + 4).unwrap_or(-1);
+
+        // Accept initial state (zeros)
+        if song_id == 0 && difficulty == 0 {
+            debug!("    0x{:X}: initial state (zeros)", addr);
+            return Ok(true);
+        }
+
+        // song_id must be in realistic range (IIDX song IDs start from ~1000)
+        if !(1000..=50000).contains(&song_id) {
+            return Ok(false);
+        }
+        // Filter out powers of 2 which are likely memory artifacts
+        if is_power_of_two(song_id as u32) {
+            return Ok(false);
+        }
+        if !(0..=9).contains(&difficulty) {
+            return Ok(false);
+        }
+
+        // Additional validation: check that the third field is reasonable
+        let field3 = self.reader.read_i32(addr + 8).unwrap_or(-1);
+        if !(0..=10000).contains(&field3) {
+            return Ok(false);
+        }
+
+        debug!(
+            "    0x{:X}: song_id={}, difficulty={}, field3={} (valid)",
+            addr, song_id, difficulty, field3
+        );
+        Ok(true)
     }
 
     /// Find all matches of a pattern in the current buffer
