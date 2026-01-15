@@ -3,13 +3,12 @@ mod game_loop;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
 
 use tokio::runtime::Handle;
 use tracing::{info, warn};
 
 use crate::config::Config;
-use crate::error::Result;
+use crate::error::{ApiErrorTracker, Result};
 use crate::game::{GameStateDetector, SongInfo, UnlockData};
 use crate::network::RefluxApi;
 use crate::offset::OffsetsCollection;
@@ -54,8 +53,8 @@ pub struct Reflux {
     pub(crate) unlock_db: UnlockDb,
     /// Tokio runtime handle for spawning async tasks
     pub(crate) runtime_handle: Option<Handle>,
-    /// Counter for failed remote API calls
-    pub(crate) failed_remote_count: Arc<AtomicUsize>,
+    /// Tracker for API errors during session
+    pub(crate) api_error_tracker: Arc<ApiErrorTracker>,
 }
 
 impl Reflux {
@@ -98,7 +97,7 @@ impl Reflux {
             api,
             unlock_db: UnlockDb::new(),
             runtime_handle,
-            failed_remote_count: Arc::new(AtomicUsize::new(0)),
+            api_error_tracker: Arc::new(ApiErrorTracker::new()),
         }
     }
 

@@ -3,7 +3,6 @@
 //! This module contains the main tracking loop and game state handling methods.
 
 use std::path::Path;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -122,12 +121,16 @@ impl Reflux {
         }
 
         // Report failed remote API calls if any
-        let failed_count = self.failed_remote_count.load(Ordering::SeqCst);
+        let failed_count = self.api_error_tracker.count();
         if failed_count > 0 {
             warn!(
                 "{} remote API call(s) failed during this session",
                 failed_count
             );
+            // Log summary by endpoint
+            for (endpoint, count) in self.api_error_tracker.summary() {
+                warn!("  - {}: {} failure(s)", endpoint, count);
+            }
         }
 
         Ok(())
@@ -255,7 +258,7 @@ impl Reflux {
             && let Some(handle) = &self.runtime_handle
         {
             let form = format_post_form(play_data, &self.config.remote_record.api_key);
-            let failed_count = Arc::clone(&self.failed_remote_count);
+            let error_tracker = Arc::clone(&self.api_error_tracker);
 
             // Capture payload summary for error logging
             let payload_summary = format!(
@@ -268,7 +271,7 @@ impl Reflux {
 
             handle.spawn(async move {
                 if let Err(e) = api.report_play(form).await {
-                    failed_count.fetch_add(1, Ordering::SeqCst);
+                    error_tracker.record("report_play", e.to_string(), &payload_summary);
                     tracing::error!(
                         "Failed to report play to remote: {} (payload: {})",
                         e,
@@ -405,10 +408,12 @@ impl Reflux {
                     && let Some(handle) = &self.runtime_handle
                 {
                     let api_clone = api.clone();
+                    let error_tracker = Arc::clone(&self.api_error_tracker);
                     let song_id_str = format!("{:05}", song_id);
                     let unlocks = unlock_data.unlocks;
                     handle.spawn(async move {
                         if let Err(e) = api_clone.report_unlock(&song_id_str, unlocks).await {
+                            error_tracker.record("report_unlock", e.to_string(), &song_id_str);
                             tracing::error!("Failed to report unlock for {}: {}", song_id_str, e);
                         }
                     });

@@ -9,7 +9,7 @@ pub mod storage;
 pub mod stream;
 
 pub use config::Config;
-pub use error::{Error, Result};
+pub use error::{ApiErrorRecord, ApiErrorTracker, Error, Result};
 pub use game::{
     AssistType, Chart, ChartInfo, CustomTypes, Difficulty, EncodingFixes, GameState,
     GameStateDetector, GaugeType, Grade, Judge, Lamp, PlayData, PlayType, RangeType, Settings,
