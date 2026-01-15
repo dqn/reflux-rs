@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 /// CLI prompter for interactive offset search
@@ -252,7 +252,13 @@ async fn main() -> Result<()> {
                             None
                         } else {
                             info!("Attempting automatic offset detection...");
-                            searcher.search_all().ok()
+                            match searcher.search_all() {
+                                Ok(offsets) => Some(offsets),
+                                Err(e) => {
+                                    debug!("Automatic offset detection failed: {}", e);
+                                    None
+                                }
+                            }
                         };
 
                         match search_result {

@@ -61,7 +61,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let base = self.reader.base_address();
 
         // Phase 1: Static pattern search (high reliability)
-        debug!("Phase 1: Searching static patterns...");
+        info!("Phase 1: Searching static patterns...");
 
         // Search for version/song_list with expanding search area
         let (version, song_list) = self.search_version_and_song_list(base)?;
@@ -77,7 +77,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         info!("  DataMap: 0x{:X}", offsets.data_map);
 
         // Phase 2: Initial state pattern search (medium reliability)
-        debug!("Phase 2: Searching initial state patterns...");
+        info!("Phase 2: Searching initial state patterns...");
 
         match self.search_judge_data_initial_state(offsets.data_map) {
             Ok(addr) => {
@@ -112,7 +112,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         }
 
         // Phase 3: Nearby search (search near found offsets)
-        debug!("Phase 3: Searching nearby offsets...");
+        info!("Phase 3: Searching nearby offsets...");
 
         match self.search_play_data_near_settings(offsets.play_settings) {
             Ok(addr) => {
@@ -138,7 +138,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         }
 
         // Phase 4: Validation
-        debug!("Phase 4: Validating offsets...");
+        info!("Phase 4: Validating offsets...");
         if !offsets.is_valid() {
             warn!("Offset validation failed");
             return Err(Error::OffsetSearchFailed(
@@ -162,7 +162,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         }
 
         // Phase 5: Code signature validation (optional, for increased confidence)
-        debug!("Phase 5: Code signature validation...");
+        info!("Phase 5: Code signature validation...");
         let signature_matches = self.validate_offsets_with_signatures(&offsets);
         if signature_matches > 0 {
             info!(
@@ -1095,8 +1095,78 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             search_size *= 2;
         }
 
+        // Fallback: search by values only (for during-play state)
+        debug!("  Marker search failed, trying fallback (value-only search)...");
+        self.search_play_settings_by_values(judge_data_hint)
+    }
+
+    /// Fallback: search PlaySettings by validating setting values only
+    ///
+    /// Used when marker search fails (e.g., during play when marker != 1).
+    /// Scans memory near JudgeData and validates setting values.
+    fn search_play_settings_by_values(&mut self, judge_data_hint: u64) -> Result<u64> {
+        debug!("Searching PlaySettings by values only...");
+
+        let mut search_size = INITIAL_SEARCH_SIZE;
+
+        while search_size <= MAX_SEARCH_SIZE {
+            self.load_buffer_around(judge_data_hint, search_size)?;
+
+            // Distance constraint from JudgeData
+            let min_distance: i64 = 100_000;
+            let max_distance: i64 = 10_000_000;
+
+            let search_start = judge_data_hint.saturating_sub(max_distance as u64);
+            let search_end = judge_data_hint + max_distance as u64;
+
+            // Align to 4 bytes
+            let aligned_start = (search_start + 3) & !3;
+
+            let mut best_candidate: Option<u64> = None;
+            let mut candidate = aligned_start;
+
+            while candidate < search_end {
+                // Check distance constraint
+                let distance = (candidate as i64 - judge_data_hint as i64).abs();
+                if distance < min_distance {
+                    candidate += 4;
+                    continue;
+                }
+
+                // Validate setting values at this address
+                let style = self.reader.read_i32(candidate).unwrap_or(-1);
+                let gauge = self.reader.read_i32(candidate + 4).unwrap_or(-1);
+                let assist = self.reader.read_i32(candidate + 8).unwrap_or(-1);
+                let unknown = self.reader.read_i32(candidate + 12).unwrap_or(-1);
+                let range = self.reader.read_i32(candidate + 16).unwrap_or(-1);
+
+                // Valid ranges check
+                if (0..=7).contains(&style)
+                    && (0..=5).contains(&gauge)
+                    && (0..=3).contains(&assist)
+                    && (0..=1).contains(&unknown)
+                    && (0..=4).contains(&range)
+                {
+                    debug!(
+                        "    0x{:X} validated (fallback): style={}, gauge={}, assist={}, range={}, distance={}",
+                        candidate, style, gauge, assist, range, distance
+                    );
+                    best_candidate = Some(candidate);
+                }
+
+                candidate += 4;
+            }
+
+            if let Some(addr) = best_candidate {
+                info!("  PlaySettings found via fallback: 0x{:X}", addr);
+                return Ok(addr);
+            }
+
+            search_size *= 2;
+        }
+
         Err(Error::OffsetSearchFailed(
-            "PlaySettings not found with marker pattern".to_string(),
+            "PlaySettings not found (both marker and fallback methods failed)".to_string(),
         ))
     }
 
