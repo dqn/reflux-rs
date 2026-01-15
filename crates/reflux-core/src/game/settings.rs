@@ -1,6 +1,21 @@
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::game::PlayType;
+
+/// Error for invalid enum value conversion
+#[derive(Debug, Error)]
+#[error("Invalid {type_name} value: {value}")]
+pub struct InvalidEnumValueError {
+    type_name: &'static str,
+    value: i32,
+}
+
+impl InvalidEnumValueError {
+    pub fn new(type_name: &'static str, value: i32) -> Self {
+        Self { type_name, value }
+    }
+}
 
 /// Play settings (options selected before playing)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -34,15 +49,15 @@ impl Settings {
         h_ran_val: i32,
     ) -> Self {
         Self {
-            style: Style::from_i32(style_val),
+            style: style_val.try_into().unwrap_or_default(),
             style2: if play_type == PlayType::Dp {
-                Some(Style::from_i32(style2_val))
+                Some(style2_val.try_into().unwrap_or_default())
             } else {
                 None
             },
-            gauge: GaugeType::from_i32(gauge_val),
-            assist: AssistType::from_i32(assist_val),
-            range: RangeType::from_i32(range_val),
+            gauge: gauge_val.try_into().unwrap_or_default(),
+            assist: assist_val.try_into().unwrap_or_default(),
+            range: range_val.try_into().unwrap_or_default(),
             flip: flip_val == 1,
             battle: battle_val == 1,
             h_ran: h_ran_val == 1,
@@ -62,20 +77,24 @@ pub enum Style {
     SymmetryRandom,
 }
 
-impl Style {
-    pub fn from_i32(value: i32) -> Self {
+impl TryFrom<i32> for Style {
+    type Error = InvalidEnumValueError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
-            0 => Self::Off,
-            1 => Self::Random,
-            2 => Self::RRandom,
-            3 => Self::SRandom,
-            4 => Self::Mirror,
-            5 => Self::SynchronizeRandom,
-            6 => Self::SymmetryRandom,
-            _ => Self::Off,
+            0 => Ok(Self::Off),
+            1 => Ok(Self::Random),
+            2 => Ok(Self::RRandom),
+            3 => Ok(Self::SRandom),
+            4 => Ok(Self::Mirror),
+            5 => Ok(Self::SynchronizeRandom),
+            6 => Ok(Self::SymmetryRandom),
+            _ => Err(InvalidEnumValueError::new("Style", value)),
         }
     }
+}
 
+impl Style {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Off => "OFF",
@@ -99,18 +118,22 @@ pub enum GaugeType {
     ExHard,
 }
 
-impl GaugeType {
-    pub fn from_i32(value: i32) -> Self {
+impl TryFrom<i32> for GaugeType {
+    type Error = InvalidEnumValueError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
-            0 => Self::Off,
-            1 => Self::AssistEasy,
-            2 => Self::Easy,
-            3 => Self::Hard,
-            4 => Self::ExHard,
-            _ => Self::Off,
+            0 => Ok(Self::Off),
+            1 => Ok(Self::AssistEasy),
+            2 => Ok(Self::Easy),
+            3 => Ok(Self::Hard),
+            4 => Ok(Self::ExHard),
+            _ => Err(InvalidEnumValueError::new("GaugeType", value)),
         }
     }
+}
 
+impl GaugeType {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Off => "OFF",
@@ -133,19 +156,23 @@ pub enum AssistType {
     AnyKey,
 }
 
-impl AssistType {
-    pub fn from_i32(value: i32) -> Self {
+impl TryFrom<i32> for AssistType {
+    type Error = InvalidEnumValueError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
-            0 => Self::Off,
-            1 => Self::AutoScratch,
-            2 => Self::FiveKeys,
-            3 => Self::LegacyNote,
-            4 => Self::KeyAssist,
-            5 => Self::AnyKey,
-            _ => Self::Off,
+            0 => Ok(Self::Off),
+            1 => Ok(Self::AutoScratch),
+            2 => Ok(Self::FiveKeys),
+            3 => Ok(Self::LegacyNote),
+            4 => Ok(Self::KeyAssist),
+            5 => Ok(Self::AnyKey),
+            _ => Err(InvalidEnumValueError::new("AssistType", value)),
         }
     }
+}
 
+impl AssistType {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Off => "OFF",
@@ -169,19 +196,23 @@ pub enum RangeType {
     LiftSud,
 }
 
-impl RangeType {
-    pub fn from_i32(value: i32) -> Self {
+impl TryFrom<i32> for RangeType {
+    type Error = InvalidEnumValueError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
-            0 => Self::Off,
-            1 => Self::SuddenPlus,
-            2 => Self::HiddenPlus,
-            3 => Self::SudHid,
-            4 => Self::Lift,
-            5 => Self::LiftSud,
-            _ => Self::Off,
+            0 => Ok(Self::Off),
+            1 => Ok(Self::SuddenPlus),
+            2 => Ok(Self::HiddenPlus),
+            3 => Ok(Self::SudHid),
+            4 => Ok(Self::Lift),
+            5 => Ok(Self::LiftSud),
+            _ => Err(InvalidEnumValueError::new("RangeType", value)),
         }
     }
+}
 
+impl RangeType {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Off => "OFF",
