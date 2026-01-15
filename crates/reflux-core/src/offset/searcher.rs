@@ -2,7 +2,7 @@ use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
 use crate::game::PlayType;
-use crate::memory::MemoryReader;
+use crate::memory::ReadMemory;
 use crate::memory::layout::{judge, settings};
 use crate::offset::OffsetsCollection;
 
@@ -29,14 +29,14 @@ pub struct SearchResult {
     pub pattern_index: usize,
 }
 
-pub struct OffsetSearcher<'a> {
-    reader: &'a MemoryReader<'a>,
+pub struct OffsetSearcher<'a, R: ReadMemory> {
+    reader: &'a R,
     buffer: Vec<u8>,
     buffer_base: u64,
 }
 
-impl<'a> OffsetSearcher<'a> {
-    pub fn new(reader: &'a MemoryReader<'a>) -> Self {
+impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
+    pub fn new(reader: &'a R) -> Self {
         Self {
             reader,
             buffer: Vec::new(),
@@ -478,7 +478,7 @@ pub struct InteractiveSearchResult {
     pub play_type: PlayType,
 }
 
-impl<'a> OffsetSearcher<'a> {
+impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     /// Run interactive offset search with user prompts
     ///
     /// This method guides the user through the offset discovery process:

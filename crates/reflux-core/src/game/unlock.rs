@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::error::Result;
 use crate::game::{Difficulty, SongInfo, UnlockType};
-use crate::memory::MemoryReader;
+use crate::memory::ReadMemory;
 
 /// Unlock data structure from memory
 #[derive(Debug, Clone, Default)]
@@ -48,8 +48,8 @@ impl UnlockData {
 }
 
 /// Load unlock states from memory for all songs
-pub fn get_unlock_states(
-    reader: &MemoryReader,
+pub fn get_unlock_states<R: ReadMemory>(
+    reader: &R,
     unlock_data_addr: u64,
     song_db: &HashMap<u32, SongInfo>,
 ) -> Result<HashMap<u32, UnlockData>> {
@@ -161,8 +161,8 @@ pub fn get_unlock_state_for_difficulty(
 /// 1. Reads current unlock states from memory
 /// 2. Compares with previous states
 /// 3. Returns only entries where `unlocks` value has changed
-pub fn update_unlock_states(
-    reader: &MemoryReader,
+pub fn update_unlock_states<R: ReadMemory>(
+    reader: &R,
     old_state: &HashMap<u32, UnlockData>,
     unlock_data_addr: u64,
     song_db: &HashMap<u32, SongInfo>,

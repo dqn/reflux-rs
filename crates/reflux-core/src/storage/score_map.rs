@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::error::Result;
 use crate::game::{Difficulty, Lamp, SongInfo};
-use crate::memory::MemoryReader;
+use crate::memory::ReadMemory;
 
 /// Score data for a single song (all difficulties)
 #[derive(Debug, Clone, Default)]
@@ -104,8 +104,8 @@ impl ScoreMap {
     }
 
     /// Load score map from INFINITAS memory
-    pub fn load_from_memory(
-        reader: &MemoryReader,
+    pub fn load_from_memory<R: ReadMemory>(
+        reader: &R,
         data_map_addr: u64,
         song_db: &HashMap<u32, SongInfo>,
     ) -> Result<Self> {
@@ -175,8 +175,8 @@ impl ScoreMap {
         Ok(result)
     }
 
-    fn follow_linked_list(
-        reader: &MemoryReader,
+    fn follow_linked_list<R: ReadMemory>(
+        reader: &R,
         entry_point: u64,
         song_db: &HashMap<u32, SongInfo>,
         nodes: &mut HashMap<(u32, i32, i32), ListNode>,

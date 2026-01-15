@@ -18,7 +18,7 @@ use crate::game::{
     PlayType, Settings, SongInfo, UnlockData, UnlockType, calculate_dj_points, check_version_match,
     find_game_version, get_unlock_state_for_difficulty, get_unlock_states,
 };
-use crate::memory::{MemoryReader, ProcessHandle};
+use crate::memory::{MemoryReader, ProcessHandle, ReadMemory};
 use crate::network::{AddSongParams, RefluxApi};
 use crate::offset::OffsetsCollection;
 use crate::storage::{

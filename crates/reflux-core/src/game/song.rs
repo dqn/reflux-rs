@@ -5,7 +5,7 @@ use tracing::debug;
 
 use crate::error::Result;
 use crate::game::UnlockType;
-use crate::memory::MemoryReader;
+use crate::memory::ReadMemory;
 
 /// Song metadata
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -63,7 +63,7 @@ impl SongInfo {
     }
 
     /// Read song info from memory at the given address
-    pub fn read_from_memory(reader: &MemoryReader, address: u64) -> Result<Option<Self>> {
+    pub fn read_from_memory<R: ReadMemory>(reader: &R, address: u64) -> Result<Option<Self>> {
         // Read entire song block
         let buffer = reader.read_bytes(address, Self::MEMORY_SIZE)?;
 
@@ -161,8 +161,8 @@ fn decode_shift_jis(bytes: &[u8]) -> String {
 }
 
 /// Fetch entire song database from memory
-pub fn fetch_song_database(
-    reader: &MemoryReader,
+pub fn fetch_song_database<R: ReadMemory>(
+    reader: &R,
     song_list_addr: u64,
 ) -> Result<HashMap<u32, SongInfo>> {
     let mut result = HashMap::new();

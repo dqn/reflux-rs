@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::memory::MemoryReader;
+use crate::memory::ReadMemory;
 
 /// Version prefix for INFINITAS
 const VERSION_PREFIX: &str = "P2D:J:B:A:";
@@ -18,7 +18,7 @@ const MAX_SEARCH_SIZE: usize = 80_000_000;
 /// Searches for "P2D:J:B:A:YYYYMMDDNN" pattern in the first 80MB of memory.
 /// Uses chunked reading (1MB at a time) to reduce memory usage.
 /// Note: The first two occurrences are old 2016 builds, so we return the last found.
-pub fn find_game_version(reader: &MemoryReader, base_address: u64) -> Result<Option<String>> {
+pub fn find_game_version<R: ReadMemory>(reader: &R, base_address: u64) -> Result<Option<String>> {
     let end_addr = base_address + MAX_SEARCH_SIZE as u64;
     let mut current_addr = base_address;
     let mut last_found: Option<String> = None;
