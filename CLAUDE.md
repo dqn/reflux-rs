@@ -79,7 +79,7 @@ cargo run            # CLI 実行（Windows のみ動作）
 - [x] **非同期エラーの可視化** (`reflux.rs:428-442`)
   - 失敗したペイロードの概要をログに記録
 
-- [ ] **パースエラー処理の簡潔化** (`storage/tracker.rs:58-184`)
+- [x] **パースエラー処理の簡潔化** (`storage/tracker.rs:58-184`)
   - 最初の 10 件のみ詳細ログ、以降はカウントのみ
 
 - [ ] **Shift-JIS デコードの柔軟化** (`memory/reader.rs:88-103`)
