@@ -400,7 +400,11 @@ async fn main() -> Result<()> {
                         reflux.set_custom_types(types);
                     }
                     Err(e) => {
-                        warn!("Failed to load custom types: {}", e);
+                        if e.is_not_found() {
+                            info!("Custom types file not found, using defaults");
+                        } else {
+                            warn!("Failed to load custom types: {}", e);
+                        }
                     }
                 }
 
