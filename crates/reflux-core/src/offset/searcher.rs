@@ -404,33 +404,54 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     /// Search for version string and song list
     ///
     /// Note: C# implementation comment says "first two versions appearing are
-    /// referring to 2016-builds, actual version appears later". So we search
-    /// the FULL memory area for ALL matches and use the LAST one.
+    /// referring to 2016-builds, actual version appears later". So we progressively
+    /// expand the search area and use the LAST match found.
     fn search_version_and_song_list(&mut self, base_hint: u64) -> Result<(String, u64)> {
         let pattern = b"P2D:J:B:A:";
+        let mut search_size = INITIAL_SEARCH_SIZE;
+        let mut last_matches: Vec<u64> = Vec::new();
 
-        // Search the full MAX_SEARCH_SIZE area to find all version strings
-        // (early matches are often 2016-build references, we need the last one)
-        debug!(
-            "  Searching for version string in {}MB area...",
-            MAX_SEARCH_SIZE / 1024 / 1024
-        );
-        self.load_buffer_around(base_hint, MAX_SEARCH_SIZE)?;
+        // Progressively expand search area until memory read fails
+        while search_size <= MAX_SEARCH_SIZE {
+            debug!(
+                "  Searching for version string in {}MB area...",
+                search_size / 1024 / 1024
+            );
 
-        let matches = self.find_all_matches(pattern);
+            match self.load_buffer_around(base_hint, search_size) {
+                Ok(()) => {
+                    last_matches = self.find_all_matches(pattern);
+                    debug!(
+                        "    Found {} match(es) in {}MB",
+                        last_matches.len(),
+                        search_size / 1024 / 1024
+                    );
+                }
+                Err(e) => {
+                    debug!(
+                        "  Memory read failed at {}MB ({}), using previous results",
+                        search_size / 1024 / 1024,
+                        e
+                    );
+                    break;
+                }
+            }
 
-        if matches.is_empty() {
+            search_size *= 2;
+        }
+
+        if last_matches.is_empty() {
             return Err(Error::OffsetSearchFailed(
                 "Version string not found within search area".to_string(),
             ));
         }
 
         // Use the LAST match (actual current version)
-        let song_list = *matches.last().expect("matches is non-empty");
+        let song_list = *last_matches.last().expect("matches is non-empty");
         debug!(
-            "  Found {} version string(s), using last at 0x{:X}",
-            matches.len(),
-            song_list
+            "  Using last version string at 0x{:X} (total {} found)",
+            song_list,
+            last_matches.len()
         );
 
         // Extract version string
