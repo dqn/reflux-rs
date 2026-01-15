@@ -707,7 +707,11 @@ impl<'a> OffsetSearcher<'a> {
 
             let zero_pattern = vec![0u8; judge_layout::INITIAL_ZERO_SIZE];
             let candidates = self.find_all_matches(&zero_pattern);
-            debug!("  Found {} zero pattern candidates in {}MB", candidates.len(), search_size / 1024 / 1024);
+            debug!(
+                "  Found {} zero pattern candidates in {}MB",
+                candidates.len(),
+                search_size / 1024 / 1024
+            );
 
             // Filter candidates by STATE_MARKER validation
             for candidate in &candidates {
@@ -949,10 +953,7 @@ impl<'a> OffsetSearcher<'a> {
         let search_start = judge_data.saturating_sub(range);
         let search_end = judge_data + range;
 
-        debug!(
-            "  Search range: 0x{:X} - 0x{:X}",
-            search_start, search_end
-        );
+        debug!("  Search range: 0x{:X} - 0x{:X}", search_start, search_end);
 
         self.load_buffer_around(judge_data, range as usize * 2)?;
 
@@ -1021,7 +1022,10 @@ impl<'a> OffsetSearcher<'a> {
 
         // Load code section for signature search
         let code_base = self.reader.base_address();
-        if self.load_buffer_around(code_base, 50 * 1024 * 1024).is_err() {
+        if self
+            .load_buffer_around(code_base, 50 * 1024 * 1024)
+            .is_err()
+        {
             debug!("Failed to load code section for signature validation");
             return 0;
         }
@@ -1062,8 +1066,7 @@ impl<'a> OffsetSearcher<'a> {
             for (pos, window) in self.buffer.windows(7).enumerate() {
                 if window[0..3] == prefix {
                     // Extract RIP-relative offset
-                    let rel_offset =
-                        i32::from_le_bytes(window[3..7].try_into().unwrap_or([0; 4]));
+                    let rel_offset = i32::from_le_bytes(window[3..7].try_into().unwrap_or([0; 4]));
 
                     // Calculate absolute address
                     // RIP points to next instruction (current_pos + 7)
