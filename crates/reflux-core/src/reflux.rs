@@ -434,10 +434,24 @@ impl Reflux {
         {
             let form = format_post_form(play_data, &self.config.remote_record.api_key);
             let failed_count = Arc::clone(&self.failed_remote_count);
+
+            // Capture payload summary for error logging
+            let payload_summary = format!(
+                "song_id={}, title={}, diff={}, ex_score={}",
+                play_data.chart.song_id,
+                play_data.chart.title,
+                play_data.chart.difficulty.short_name(),
+                play_data.ex_score
+            );
+
             handle.spawn(async move {
                 if let Err(e) = api.report_play(form).await {
                     failed_count.fetch_add(1, Ordering::SeqCst);
-                    tracing::error!("Failed to report play to remote: {}", e);
+                    tracing::error!(
+                        "Failed to report play to remote: {} (payload: {})",
+                        e,
+                        payload_summary
+                    );
                 }
             });
         }
