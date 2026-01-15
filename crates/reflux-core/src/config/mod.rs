@@ -2,6 +2,7 @@ use crate::error::Result;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use tracing::warn;
 
 #[derive(Debug, Clone, Default)]
 pub struct Config {
@@ -135,25 +136,40 @@ impl IniParser {
         let mut sections: HashMap<String, HashMap<String, String>> = HashMap::new();
         let mut current_section = String::new();
 
-        for line in content.lines() {
+        for (line_num, line) in content.lines().enumerate() {
+            let line_num = line_num + 1; // 1-indexed for user-friendly display
             let line = line.trim();
 
             if line.is_empty() || line.starts_with(';') || line.starts_with('#') {
                 continue;
             }
 
-            if line.starts_with('[') && line.ends_with(']') {
-                current_section = line[1..line.len() - 1].to_lowercase();
-                sections.entry(current_section.clone()).or_default();
+            if line.starts_with('[') {
+                if line.ends_with(']') {
+                    current_section = line[1..line.len() - 1].to_lowercase();
+                    sections.entry(current_section.clone()).or_default();
+                } else {
+                    warn!(
+                        "config line {}: malformed section header '{}' (missing closing bracket)",
+                        line_num, line
+                    );
+                }
             } else if let Some((key, value)) = line.split_once('=') {
                 let key = key.trim().to_lowercase();
                 let value = value.trim().to_string();
-                if !current_section.is_empty() {
+                if current_section.is_empty() {
+                    warn!(
+                        "config line {}: key '{}' outside of any section",
+                        line_num, key
+                    );
+                } else {
                     sections
                         .entry(current_section.clone())
                         .or_default()
                         .insert(key, value);
                 }
+            } else {
+                warn!("config line {}: unrecognized syntax '{}'", line_num, line);
             }
         }
 

@@ -100,7 +100,7 @@ cargo run            # CLI 実行（Windows のみ動作）
 - [x] **リトライロジックの共通化** (`network/client.rs`)
   - `post_form()` と `get()` の重複を抽出
 
-- [ ] **INI パーサーのエラー改善** (`config/mod.rs`)
+- [x] **INI パーサーのエラー改善** (`config/mod.rs`)
   - エラー型に行番号情報を追加
 
 - [ ] **unwrap() の明確化**
