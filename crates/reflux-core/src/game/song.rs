@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::error::Result;
-use crate::game::UnlockType;
+use crate::game::{EncodingFixes, UnlockType};
 use crate::memory::ReadMemory;
 
 /// Song metadata
@@ -166,6 +166,15 @@ pub fn fetch_song_database<R: ReadMemory>(
     reader: &R,
     song_list_addr: u64,
 ) -> Result<HashMap<u32, SongInfo>> {
+    fetch_song_database_with_fixes(reader, song_list_addr, None)
+}
+
+/// Fetch entire song database from memory with optional encoding fixes
+pub fn fetch_song_database_with_fixes<R: ReadMemory>(
+    reader: &R,
+    song_list_addr: u64,
+    encoding_fixes: Option<&EncodingFixes>,
+) -> Result<HashMap<u32, SongInfo>> {
     let mut result = HashMap::new();
     let mut current_position: u64 = 0;
 
@@ -173,7 +182,16 @@ pub fn fetch_song_database<R: ReadMemory>(
         let address = song_list_addr + current_position;
 
         match SongInfo::read_from_memory(reader, address)? {
-            Some(song) if !song.title.is_empty() => {
+            Some(mut song) if !song.title.is_empty() => {
+                // Apply encoding fixes if provided
+                if let Some(fixes) = encoding_fixes {
+                    if fixes.has_fix(&song.title) {
+                        song.title = fixes.apply(&song.title).into();
+                    }
+                    if fixes.has_fix(&song.artist) {
+                        song.artist = fixes.apply(&song.artist).into();
+                    }
+                }
                 result.insert(song.id, song);
             }
             _ => {

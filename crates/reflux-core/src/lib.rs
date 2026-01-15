@@ -14,7 +14,8 @@ pub use game::{
     AssistType, Chart, ChartInfo, CustomTypes, Difficulty, EncodingFixes, GameState,
     GameStateDetector, GaugeType, Grade, Judge, Lamp, PlayData, PlayType, RangeType, Settings,
     SongInfo, Style, UnlockData, UnlockType, calculate_dj_points, calculate_dj_points_from_score,
-    fetch_song_database, get_unlock_state_for_difficulty, get_unlock_states,
+    fetch_song_database, fetch_song_database_with_fixes, get_unlock_state_for_difficulty,
+    get_unlock_states,
 };
 pub use memory::{MemoryReader, ProcessHandle};
 pub use network::{HttpClient, KamaitachiClient, RefluxApi};

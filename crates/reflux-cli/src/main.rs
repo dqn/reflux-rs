@@ -1,9 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
 use reflux_core::{
-    Config, CustomTypes, MemoryReader, OffsetDump, OffsetSearcher, OffsetsCollection,
-    ProcessHandle, Reflux, RefluxApi, ScoreMap, SearchPrompter, export_song_list,
-    fetch_song_database, load_from_cache, load_offsets, save_offsets, save_to_cache,
+    Config, CustomTypes, EncodingFixes, MemoryReader, OffsetDump, OffsetSearcher,
+    OffsetsCollection, ProcessHandle, Reflux, RefluxApi, ScoreMap, SearchPrompter,
+    export_song_list, fetch_song_database_with_fixes, load_from_cache, load_offsets, save_offsets,
+    save_to_cache,
 };
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -337,9 +338,29 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // Load encoding fixes
+                let encoding_fixes = match EncodingFixes::load("encodingfixes.txt") {
+                    Ok(ef) => {
+                        info!("Loaded {} encoding fixes", ef.len());
+                        Some(ef)
+                    }
+                    Err(e) => {
+                        if e.is_not_found() {
+                            info!("Encoding fixes file not found, using defaults");
+                        } else {
+                            warn!("Failed to load encoding fixes: {}", e);
+                        }
+                        None
+                    }
+                };
+
                 // Load song database from game memory
                 info!("Loading song database...");
-                let song_db = match fetch_song_database(&reader, reflux.offsets().song_list) {
+                let song_db = match fetch_song_database_with_fixes(
+                    &reader,
+                    reflux.offsets().song_list,
+                    encoding_fixes.as_ref(),
+                ) {
                     Ok(db) => {
                         info!("Loaded {} songs", db.len());
                         db
