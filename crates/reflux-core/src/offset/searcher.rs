@@ -867,94 +867,77 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         debug!("Searching PlayData near PlaySettings...");
 
         // Historical data shows PlayData is about 0x2B0 bytes after PlaySettings
-        // Search around that expected location first
         let expected_offset: u64 = 0x2B0;
-        let tolerance: u64 = 10_000;
+        let expected_addr = play_settings + expected_offset;
 
-        let search_start = play_settings + expected_offset.saturating_sub(tolerance);
-        let search_end = play_settings + expected_offset + tolerance;
+        debug!("  Expected PlayData at 0x{:X}", expected_addr);
+
+        // First, check the expected location - it may be in initial state (all zeros)
+        // or contain valid play data
+        self.load_buffer_around(expected_addr, 1024)?;
+
+        let song_id = self.reader.read_i32(expected_addr).unwrap_or(-1);
+        let difficulty = self.reader.read_i32(expected_addr + 4).unwrap_or(-1);
+        let ex_score = self.reader.read_i32(expected_addr + 8).unwrap_or(-1);
+        let miss_count = self.reader.read_i32(expected_addr + 12).unwrap_or(-1);
 
         debug!(
-            "  Search range: 0x{:X} - 0x{:X} (expected at 0x{:X})",
-            search_start,
-            search_end,
-            play_settings + expected_offset
+            "    Values at expected location: song_id={}, difficulty={}, ex_score={}, miss_count={}",
+            song_id, difficulty, ex_score, miss_count
         );
 
-        self.load_buffer_around(play_settings + expected_offset, tolerance as usize * 2)?;
+        // Accept initial state (all zeros) - game hasn't played any song yet
+        let is_initial_state = song_id == 0 && difficulty == 0 && ex_score == 0 && miss_count == 0;
+        // Accept valid play data
+        let is_valid_play_data = (0..=50000).contains(&song_id)
+            && (0..=9).contains(&difficulty)
+            && (0..=10000).contains(&ex_score)
+            && (0..=3000).contains(&miss_count);
 
-        // Search for PlayData structure pattern
-        // PlayData contains: song_id, difficulty, ex_score, miss_count, clear_type, etc.
+        if is_initial_state || is_valid_play_data {
+            debug!(
+                "    0x{:X} accepted ({})",
+                expected_addr,
+                if is_initial_state {
+                    "initial state"
+                } else {
+                    "valid data"
+                }
+            );
+            return Ok(expected_addr);
+        }
+
+        // Fallback: search around expected location
+        debug!("  Expected location invalid, searching nearby...");
+        let tolerance: u64 = 10_000;
+        let search_start = expected_addr.saturating_sub(tolerance);
+        let search_end = expected_addr + tolerance;
+
+        self.load_buffer_around(expected_addr, tolerance as usize * 2)?;
+
         for offset in (search_start..search_end).step_by(4) {
-            // Skip addresses too close to PlaySettings (within 256 bytes)
             if offset < play_settings + 256 {
                 continue;
             }
 
             let song_id = self.reader.read_i32(offset).unwrap_or(-1);
             let difficulty = self.reader.read_i32(offset + 4).unwrap_or(-1);
-
-            // song_id must be in valid range (1-50000 for actual songs)
-            if !(1..=50000).contains(&song_id) {
-                continue;
-            }
-            if !(0..=9).contains(&difficulty) {
-                continue;
-            }
-
-            // Additional validation: check ex_score and miss_count fields
-            // These should be reasonable values (0-10000 range)
             let ex_score = self.reader.read_i32(offset + 8).unwrap_or(-1);
             let miss_count = self.reader.read_i32(offset + 12).unwrap_or(-1);
 
-            if !(0..=10000).contains(&ex_score) {
-                continue;
+            let is_initial = song_id == 0 && difficulty == 0 && ex_score == 0 && miss_count == 0;
+            let is_valid = (0..=50000).contains(&song_id)
+                && (0..=9).contains(&difficulty)
+                && (0..=10000).contains(&ex_score)
+                && (0..=3000).contains(&miss_count);
+
+            if is_initial || is_valid {
+                debug!(
+                    "    0x{:X} candidate: song_id={}, difficulty={}, ex_score={}, miss_count={}",
+                    offset, song_id, difficulty, ex_score, miss_count
+                );
+                return Ok(offset);
             }
-            if !(0..=3000).contains(&miss_count) {
-                continue;
-            }
-
-            debug!(
-                "    0x{:X} candidate: song_id={}, difficulty={}, ex_score={}, miss_count={}",
-                offset, song_id, difficulty, ex_score, miss_count
-            );
-            return Ok(offset);
-        }
-
-        // Fallback: wider search if expected location fails
-        debug!("  Expected location search failed, trying wider range...");
-        let range = 100_000u64;
-        let search_start = play_settings + 256; // Skip PlaySettings area
-        let search_end = play_settings + range;
-
-        self.load_buffer_around(play_settings + range / 2, range as usize)?;
-
-        for offset in (search_start..search_end).step_by(4) {
-            let song_id = self.reader.read_i32(offset).unwrap_or(-1);
-            let difficulty = self.reader.read_i32(offset + 4).unwrap_or(-1);
-
-            if !(1..=50000).contains(&song_id) {
-                continue;
-            }
-            if !(0..=9).contains(&difficulty) {
-                continue;
-            }
-
-            let ex_score = self.reader.read_i32(offset + 8).unwrap_or(-1);
-            let miss_count = self.reader.read_i32(offset + 12).unwrap_or(-1);
-
-            if !(0..=10000).contains(&ex_score) {
-                continue;
-            }
-            if !(0..=3000).contains(&miss_count) {
-                continue;
-            }
-
-            debug!(
-                "    0x{:X} candidate (fallback): song_id={}, difficulty={}, ex_score={}, miss_count={}",
-                offset, song_id, difficulty, ex_score, miss_count
-            );
-            return Ok(offset);
         }
 
         Err(Error::OffsetSearchFailed(
