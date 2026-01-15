@@ -112,16 +112,14 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             }
         }
 
-        match self.search_current_song_near_judge(offsets.judge_data, offsets.play_data) {
-            Ok(addr) => {
-                offsets.current_song = addr;
-                info!("  CurrentSong: 0x{:X}", offsets.current_song);
-            }
-            Err(e) => {
-                warn!("  CurrentSong search failed: {}", e);
-                return Err(e);
-            }
-        }
+        // CurrentSong is at a fixed offset from JudgeData (verified across multiple versions)
+        // See: https://github.com/olji/Reflux/commits/master/Reflux/offsets.txt
+        const CURRENT_SONG_OFFSET_FROM_JUDGE: u64 = 0x1F4; // 500 bytes
+        offsets.current_song = offsets.judge_data + CURRENT_SONG_OFFSET_FROM_JUDGE;
+        info!(
+            "  CurrentSong: 0x{:X} (JudgeData + 0x{:X})",
+            offsets.current_song, CURRENT_SONG_OFFSET_FROM_JUDGE
+        );
 
         // Phase 4: Validation
         debug!("Phase 4: Validating offsets...");
