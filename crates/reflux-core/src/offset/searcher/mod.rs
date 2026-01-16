@@ -35,28 +35,49 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     /// Search for all offsets automatically (non-interactive)
     ///
     /// This method attempts to find all offsets without user interaction.
-    /// Strategy: Use judgeData as anchor point, then find other offsets via relative positions.
+    /// Strategy: Find SongList first (most reliable), then use relative positions.
     ///
     /// Detection order:
-    /// 1. JudgeData (anchor) - using initial state or during-play pattern
-    /// 2. PlaySettings - relative to JudgeData with fallback
-    /// 3. PlayData - relative to PlaySettings with fallback
-    /// 4. CurrentSong - relative to JudgeData with fallback
-    /// 5. SongList - relative to JudgeData with fallback
+    /// 1. SongList (anchor) - using version string and song count validation
+    /// 2. JudgeData - relative to SongList with fallback
+    /// 3. PlaySettings - relative to JudgeData with fallback
+    /// 4. PlayData - relative to PlaySettings with fallback
+    /// 5. CurrentSong - relative to JudgeData with fallback
     /// 6. DataMap, UnlockData - using existing patterns
     pub fn search_all(&mut self) -> Result<OffsetsCollection> {
         info!("Starting automatic offset detection...");
         let mut offsets = OffsetsCollection::default();
         let base = self.reader.base_address();
 
-        // Phase 1: Search JudgeData (anchor point)
-        // This must succeed - other offsets depend on it
-        info!("Phase 1: Searching JudgeData (anchor)...");
-        offsets.judge_data = self.search_judge_data_flexible(base)?;
+        // Phase 1: Search SongList (most reliable anchor point)
+        // This uses song count validation which is highly reliable
+        info!("Phase 1: Searching SongList (anchor)...");
+        match self.search_version_and_song_list(base) {
+            Ok((version, song_list)) => {
+                offsets.version = version;
+                offsets.song_list = song_list;
+                info!("  SongList: 0x{:X}", offsets.song_list);
+                info!("  Version: {}", offsets.version);
+            }
+            Err(e) => {
+                warn!("  SongList search failed: {}", e);
+                return Err(e);
+            }
+        }
+
+        // Phase 2: Search JudgeData relative to SongList
+        // judgeData = songList - JUDGE_TO_SONG_LIST (approximately)
+        info!("Phase 2: Searching JudgeData relative to SongList...");
+        offsets.judge_data = self
+            .search_judge_data_near_song_list_narrow(offsets.song_list)
+            .or_else(|e| {
+                info!("  JudgeData narrow search failed: {}, trying flexible search", e);
+                self.search_judge_data_flexible(offsets.song_list)
+            })?;
         info!("  JudgeData: 0x{:X}", offsets.judge_data);
 
-        // Phase 2: Search relative offsets with fallback
-        info!("Phase 2: Searching relative offsets...");
+        // Phase 3: Search relative offsets with fallback
+        info!("Phase 3: Searching relative offsets...");
 
         // PlaySettings: narrow search → full search
         offsets.play_settings = self
@@ -88,35 +109,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             })?;
         info!("  CurrentSong: 0x{:X}", offsets.current_song);
 
-        // Phase 3: Search SongList and remaining offsets
-        info!("Phase 3: Searching SongList and remaining offsets...");
-
-        // SongList: narrow search → full search
-        let song_list_result = self
-            .search_song_list_near_judge_narrow(offsets.judge_data)
-            .or_else(|e| {
-                info!("  SongList narrow search failed: {}, trying fallback", e);
-                self.search_version_and_song_list(base).map(|(v, sl)| {
-                    offsets.version = v;
-                    sl
-                })
-            });
-
-        match song_list_result {
-            Ok(sl) => {
-                offsets.song_list = sl;
-                // Read version if not already set
-                if offsets.version.is_empty() {
-                    offsets.version = self.read_version_at(sl).unwrap_or_default();
-                }
-                info!("  SongList: 0x{:X}", offsets.song_list);
-                info!("  Version: {}", offsets.version);
-            }
-            Err(e) => {
-                warn!("  SongList search failed: {}", e);
-                return Err(e);
-            }
-        }
+        // Phase 4: Search remaining offsets
+        info!("Phase 4: Searching remaining offsets...");
 
         // DataMap: search from songList → search from base
         offsets.data_map = self
@@ -134,8 +128,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         offsets.unlock_data = self.search_unlock_data_offset(offsets.song_list)?;
         info!("  UnlockData: 0x{:X}", offsets.unlock_data);
 
-        // Phase 4: Validation
-        info!("Phase 4: Validating offsets...");
+        // Phase 5: Validation
+        info!("Phase 5: Validating offsets...");
         if !offsets.is_valid() {
             warn!("Offset validation failed");
             return Err(Error::OffsetSearchFailed(
@@ -143,8 +137,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             ));
         }
 
-        // Phase 5: Code signature validation (optional, for increased confidence)
-        info!("Phase 5: Code signature validation...");
+        // Phase 6: Code signature validation (optional, for increased confidence)
+        info!("Phase 6: Code signature validation...");
         let signature_matches = self.validate_offsets_with_signatures(&offsets);
         if signature_matches > 0 {
             info!(
@@ -747,12 +741,93 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     // Automatic offset detection methods (non-interactive)
     // ==========================================================================
 
+    /// Narrow search for JudgeData near SongList using relative offset
+    ///
+    /// Search range: ±64KB around expected position (songList - JUDGE_TO_SONG_LIST)
+    /// This is the most reliable anchor detection method.
+    fn search_judge_data_near_song_list_narrow(&mut self, song_list: u64) -> Result<u64> {
+        let center = song_list.saturating_sub(JUDGE_TO_SONG_LIST);
+        let range = JUDGE_DATA_SEARCH_RANGE;
+
+        debug!(
+            "Searching JudgeData in narrow range: center=0x{:X}, range=±{}KB",
+            center,
+            range / 1024
+        );
+
+        if let Err(e) = self.load_buffer_around(center, range) {
+            debug!("  Memory load failed: {}", e);
+            return Err(Error::OffsetSearchFailed("Memory load failed".to_string()));
+        }
+
+        // Search for 72-byte zero pattern (initial state) or during-play pattern
+        let zero_pattern = vec![0u8; judge::INITIAL_ZERO_SIZE];
+        let candidates = self.find_all_matches(&zero_pattern);
+
+        debug!(
+            "  Found {} zero pattern candidates in narrow range",
+            candidates.len()
+        );
+
+        // Validate each candidate
+        for &candidate in &candidates {
+            // Check distance from expected center - should be within range
+            let distance_from_center = candidate.abs_diff(center);
+            if distance_from_center > range as u64 {
+                continue;
+            }
+
+            // STATE_MARKER validation
+            let marker1 = self
+                .reader
+                .read_i32(candidate + judge::STATE_MARKER_1)
+                .unwrap_or(-1);
+            let marker2 = self
+                .reader
+                .read_i32(candidate + judge::STATE_MARKER_2)
+                .unwrap_or(-1);
+
+            // Valid markers are 0 (song select) or small positive values (during/after play)
+            if marker1 < 0 || marker1 > 100 || marker2 < 0 || marker2 > 100 {
+                continue;
+            }
+
+            debug!(
+                "    0x{:X} validated: markers=({}, {}), distance_from_center={}",
+                candidate, marker1, marker2, distance_from_center
+            );
+            return Ok(candidate);
+        }
+
+        // If zero pattern search failed, try during-play validation
+        debug!("  Zero pattern search failed, trying during-play validation...");
+        let base = self.reader.base_address();
+        let start = center.saturating_sub(range as u64).max(base);
+        let end = center.saturating_add(range as u64);
+
+        let mut candidate = (start + 3) & !3;
+        while candidate < end {
+            if self.validate_judge_data_during_play(candidate) {
+                debug!(
+                    "    0x{:X} validated as JudgeData (during-play)",
+                    candidate
+                );
+                return Ok(candidate);
+            }
+            candidate += 4;
+        }
+
+        Err(Error::OffsetSearchFailed(
+            "JudgeData not found in narrow range from SongList".to_string(),
+        ))
+    }
+
     /// Search for JudgeData flexibly (initial state or during-play)
     ///
-    /// This is the anchor point for relative offset detection.
-    fn search_judge_data_flexible(&mut self, base: u64) -> Result<u64> {
+    /// Fallback method when narrow search fails.
+    fn search_judge_data_flexible(&mut self, hint: u64) -> Result<u64> {
         // Try initial state pattern first
-        match self.search_judge_data_initial_state(base) {
+        match self.search_judge_data_initial_state(hint) {
             Ok(addr) => {
                 info!("  JudgeData found (initial state): 0x{:X}", addr);
                 return Ok(addr);
@@ -763,7 +838,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         }
 
         // Fallback: during-play detection
-        match self.search_judge_data_during_play(base) {
+        match self.search_judge_data_during_play(hint) {
             Ok(addr) => {
                 info!("  JudgeData found (during-play): 0x{:X}", addr);
                 Ok(addr)
@@ -915,55 +990,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         best_candidate.ok_or_else(|| {
             Error::OffsetSearchFailed("CurrentSong not found in narrow range".to_string())
         })
-    }
-
-    /// Narrow search for SongList near JudgeData using relative offset
-    ///
-    /// Search range: ±64KB around expected position (judgeData + 0x94E000)
-    fn search_song_list_near_judge_narrow(&mut self, judge_data: u64) -> Result<u64> {
-        let center = judge_data + JUDGE_TO_SONG_LIST;
-        let range = SONG_LIST_SEARCH_RANGE;
-
-        debug!(
-            "Searching SongList in narrow range: center=0x{:X}, range=±{}KB",
-            center,
-            range / 1024
-        );
-
-        if let Err(e) = self.load_buffer_around(center, range) {
-            debug!("  Memory load failed: {}", e);
-            return Err(Error::OffsetSearchFailed("Memory load failed".to_string()));
-        }
-
-        // Search for version string pattern "P2D:J:B:A:"
-        let pattern = b"P2D:J:B:A:";
-        let candidates = self.find_all_matches(pattern);
-
-        debug!("  Found {} version string candidates", candidates.len());
-
-        // Validate each candidate by counting songs
-        for &candidate in candidates.iter().rev() {
-            let song_count = self.count_songs_at_address(candidate);
-            debug!(
-                "    Candidate 0x{:X}: {} songs readable",
-                candidate, song_count
-            );
-
-            if song_count >= MIN_EXPECTED_SONGS {
-                return Ok(candidate);
-            }
-        }
-
-        Err(Error::OffsetSearchFailed(
-            "SongList not found in narrow range".to_string(),
-        ))
-    }
-
-    /// Read version string at the given address
-    fn read_version_at(&self, address: u64) -> Result<String> {
-        let bytes = self.reader.read_bytes(address, 30)?;
-        let end = bytes.iter().position(|&b| b == 0).unwrap_or(30);
-        Ok(String::from_utf8_lossy(&bytes[..end]).to_string())
     }
 
     /// Validate if the given address contains valid PlaySettings

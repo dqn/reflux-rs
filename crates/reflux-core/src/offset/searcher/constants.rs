@@ -2,27 +2,34 @@
 //!
 //! # Search Strategy
 //!
-//! The offset searcher uses JudgeData as an anchor point, then finds other
+//! The offset searcher uses SongList as the primary anchor point, then finds other
 //! offsets via relative positions. This approach is reliable because:
 //!
-//! 1. JudgeData has a unique pattern (18 consecutive zeros in song select)
+//! 1. SongList detection uses song count validation (>= 1000 songs)
 //! 2. Relative offsets between structures are stable across game versions
+//! 3. JudgeData is found relative to SongList, avoiding false positives
 //!
 //! # Offset Relationships
 //!
 //! ```text
 //!                        Memory Layout (approximate)
 //! ┌─────────────────────────────────────────────────────────┐
-//! │  PlaySettings  ◄──── 0x2ACE00 ────► JudgeData          │
-//! │       │                                  │               │
-//! │       │ 0x2B0                           │ 0x1E4         │
-//! │       ▼                                  ▼               │
-//! │   PlayData                          CurrentSong         │
+//! │                                      SongList ◄──(1)    │
 //! │                                          │               │
 //! │                                          │ ~0x94E000     │
 //! │                                          ▼               │
-//! │                                      SongList           │
+//! │  PlaySettings  ◄──── 0x2ACE00 ────► JudgeData ◄──(2)    │
+//! │       │                                  │               │
+//! │       │ 0x2B0                           │ 0x1E4         │
+//! │       ▼                                  ▼               │
+//! │   PlayData ◄──(4)                   CurrentSong ◄──(5)  │
+//! │       ▲                                                  │
+//! │       │                                                  │
+//! │  (3)──┘                                                  │
 //! └─────────────────────────────────────────────────────────┘
+//!
+//! Detection order: (1) SongList → (2) JudgeData → (3) PlaySettings →
+//!                  (4) PlayData → (5) CurrentSong
 //! ```
 //!
 //! # Historical Analysis
@@ -57,11 +64,6 @@ pub const PLAY_SETTINGS_SEARCH_RANGE: usize = 0x2000;
 /// Historical variation: ±0x600 (1.5KB)
 pub const JUDGE_TO_SONG_LIST: u64 = 0x94E000;
 
-/// Search range for songList (±64KB)
-///
-/// This is ~27x the measured variation to ensure reliable detection.
-pub const SONG_LIST_SEARCH_RANGE: usize = 0x10000;
-
 /// Expected offset: playData - playSettings ≈ 0x2B0
 ///
 /// Historical variation: ±0x10 (16 bytes)
@@ -81,3 +83,8 @@ pub const JUDGE_TO_CURRENT_SONG: u64 = 0x1E4;
 ///
 /// This is ~16x the measured variation to ensure reliable detection.
 pub const CURRENT_SONG_SEARCH_RANGE: usize = 0x100;
+
+/// Search range for judgeData when searching from SongList (±64KB)
+///
+/// This is the same range as songList search since it uses the same relative offset.
+pub const JUDGE_DATA_SEARCH_RANGE: usize = 0x10000;
