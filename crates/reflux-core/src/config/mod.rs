@@ -199,7 +199,8 @@ impl IniParser {
     }
 
     fn get_bool(&self, section: &str, key: &str) -> bool {
-        self.parse_bool_value(&self.get_string(section, key)).unwrap_or(false)
+        self.parse_bool_value(&self.get_string(section, key))
+            .unwrap_or(false)
     }
 
     fn get_bool_opt(&self, section: &str, key: &str) -> Option<bool> {
