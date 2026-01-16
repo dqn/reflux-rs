@@ -797,6 +797,20 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                 continue;
             }
 
+            // PlaySettings validation: check if expected position has valid settings
+            // This is the most reliable validation since PlaySettings has non-zero option values
+            let expected_play_settings = candidate.saturating_sub(JUDGE_TO_PLAY_SETTINGS);
+            if self
+                .validate_play_settings_at(expected_play_settings)
+                .is_none()
+            {
+                debug!(
+                    "  JudgeData candidate 0x{:X} rejected: PlaySettings invalid at 0x{:X}",
+                    candidate, expected_play_settings
+                );
+                continue;
+            }
+
             // CurrentSong validation: check if expected position has valid song data
             // This helps distinguish correct JudgeData from false positives
             let current_song_addr = candidate + JUDGE_TO_CURRENT_SONG;
