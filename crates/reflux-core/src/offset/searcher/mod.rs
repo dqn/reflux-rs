@@ -788,7 +788,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                 .unwrap_or(-1);
 
             // Valid markers are 0 (song select) or small positive values (during/after play)
-            if marker1 < 0 || marker1 > 100 || marker2 < 0 || marker2 > 100 {
+            if !(0..=100).contains(&marker1) || !(0..=100).contains(&marker2) {
                 continue;
             }
 
