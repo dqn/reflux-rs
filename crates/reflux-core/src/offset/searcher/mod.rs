@@ -71,7 +71,10 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         offsets.judge_data = self
             .search_judge_data_near_song_list_narrow(offsets.song_list)
             .or_else(|e| {
-                info!("  JudgeData narrow search failed: {}, trying flexible search", e);
+                info!(
+                    "  JudgeData narrow search failed: {}, trying flexible search",
+                    e
+                );
                 self.search_judge_data_flexible(offsets.song_list)
             })?;
         info!("  JudgeData: 0x{:X}", offsets.judge_data);
@@ -486,14 +489,14 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             all_matches.len()
         );
 
-        // Try candidates from last to first (newer versions tend to appear later)
+        // Try candidates from first to last (use the "top one" per C# implementation)
         // Validate each by counting readable songs
         let mut song_list_addr: Option<u64> = None;
-        for (idx, &candidate) in all_matches.iter().rev().enumerate() {
+        for (idx, &candidate) in all_matches.iter().enumerate() {
             let song_count = self.count_songs_at_address(candidate);
             debug!(
                 "    Candidate {} (0x{:X}): {} songs readable",
-                all_matches.len() - idx,
+                idx + 1,
                 candidate,
                 song_count
             );
@@ -511,7 +514,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let song_list = song_list_addr.ok_or_else(|| {
             let candidates_info: Vec<String> = all_matches
                 .iter()
-                .rev()
                 .take(5)
                 .map(|&addr| {
                     let count = self.count_songs_at_address(addr);
@@ -845,10 +847,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let mut candidate = (start + 3) & !3;
         while candidate < end {
             if self.validate_judge_data_during_play(candidate) {
-                debug!(
-                    "    0x{:X} validated as JudgeData (during-play)",
-                    candidate
-                );
+                debug!("    0x{:X} validated as JudgeData (during-play)", candidate);
                 return Ok(candidate);
             }
             candidate += 4;
