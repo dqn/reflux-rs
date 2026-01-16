@@ -438,23 +438,24 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
     /// Search for version string and song list
     ///
-    /// This method searches for "P2D:J:B:A:" pattern and validates candidates
-    /// by actually reading the song list to ensure we found the correct offset.
+    /// This method searches for "5.1.1." pattern (first song's version) to find
+    /// the SongList, then separately searches for "P2D:J:B:A:" to get the version string.
     fn search_version_and_song_list(&mut self, base_hint: u64) -> Result<(String, u64)> {
-        let pattern = b"P2D:J:B:A:";
+        // Search for SongList using "5.1.1." pattern (first song's version marker)
+        let song_list_pattern = b"5.1.1.";
         let mut search_size = INITIAL_SEARCH_SIZE;
         let mut all_matches: Vec<u64> = Vec::new();
 
         // Progressively expand search area until memory read fails
         while search_size <= MAX_SEARCH_SIZE {
             debug!(
-                "  Searching for version string in {}MB area...",
+                "  Searching for SongList pattern in {}MB area...",
                 search_size / 1024 / 1024
             );
 
             match self.load_buffer_around(base_hint, search_size) {
                 Ok(()) => {
-                    all_matches = self.find_all_matches(pattern);
+                    all_matches = self.find_all_matches(song_list_pattern);
                     debug!(
                         "    Found {} match(es) in {}MB",
                         all_matches.len(),
@@ -476,7 +477,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
         if all_matches.is_empty() {
             return Err(Error::OffsetSearchFailed(
-                "Version string not found within search area".to_string(),
+                "SongList pattern (5.1.1.) not found within search area".to_string(),
             ));
         }
 
@@ -487,6 +488,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
         // Try candidates from last to first (newer versions tend to appear later)
         // Validate each by counting readable songs
+        let mut song_list_addr: Option<u64> = None;
         for (idx, &candidate) in all_matches.iter().rev().enumerate() {
             let song_count = self.count_songs_at_address(candidate);
             debug!(
@@ -501,38 +503,73 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                     "  Validated SongList at 0x{:X} with {} songs",
                     candidate, song_count
                 );
-
-                // Extract version string
-                let pos = (candidate - self.buffer_base) as usize;
-                let end = self.buffer[pos..]
-                    .iter()
-                    .position(|&b| b == 0)
-                    .map(|p| pos + p)
-                    .unwrap_or(pos + 30);
-
-                let version_bytes = &self.buffer[pos..end.min(pos + 30)];
-                let version = String::from_utf8_lossy(version_bytes).to_string();
-
-                return Ok((version, candidate));
+                song_list_addr = Some(candidate);
+                break;
             }
         }
 
-        // If no candidate passed validation, return an error with diagnostic info
-        let candidates_info: Vec<String> = all_matches
-            .iter()
-            .rev()
-            .take(5)
-            .map(|&addr| {
-                let count = self.count_songs_at_address(addr);
-                format!("0x{:X} ({} songs)", addr, count)
-            })
-            .collect();
+        let song_list = song_list_addr.ok_or_else(|| {
+            let candidates_info: Vec<String> = all_matches
+                .iter()
+                .rev()
+                .take(5)
+                .map(|&addr| {
+                    let count = self.count_songs_at_address(addr);
+                    format!("0x{:X} ({} songs)", addr, count)
+                })
+                .collect();
 
-        Err(Error::OffsetSearchFailed(format!(
-            "No SongList candidate passed validation (>= {} songs). Candidates: {}",
-            MIN_EXPECTED_SONGS,
-            candidates_info.join(", ")
-        )))
+            Error::OffsetSearchFailed(format!(
+                "No SongList candidate passed validation (>= {} songs). Candidates: {}",
+                MIN_EXPECTED_SONGS,
+                candidates_info.join(", ")
+            ))
+        })?;
+
+        // Now search for version string using "P2D:J:B:A:" pattern
+        let version = self.search_version_string(base_hint)?;
+
+        Ok((version, song_list))
+    }
+
+    /// Search for game version string using "P2D:J:B:A:" pattern
+    fn search_version_string(&mut self, base_hint: u64) -> Result<String> {
+        let version_pattern = b"P2D:J:B:A:";
+        let mut search_size = INITIAL_SEARCH_SIZE;
+        let mut all_matches: Vec<u64> = Vec::new();
+
+        while search_size <= MAX_SEARCH_SIZE {
+            match self.load_buffer_around(base_hint, search_size) {
+                Ok(()) => {
+                    all_matches = self.find_all_matches(version_pattern);
+                }
+                Err(_) => break,
+            }
+            search_size *= 2;
+        }
+
+        if all_matches.is_empty() {
+            return Err(Error::OffsetSearchFailed(
+                "Version string (P2D:J:B:A:) not found".to_string(),
+            ));
+        }
+
+        // Use last match (most likely to be the active version)
+        let version_addr = *all_matches.last().expect("matches is non-empty");
+
+        // Extract version string from buffer
+        let pos = (version_addr - self.buffer_base) as usize;
+        let end = self.buffer[pos..]
+            .iter()
+            .position(|&b| b == 0)
+            .map(|p| pos + p)
+            .unwrap_or(pos + 30);
+
+        let version_bytes = &self.buffer[pos..end.min(pos + 30)];
+        let version = String::from_utf8_lossy(version_bytes).to_string();
+
+        debug!("  Found version string: {}", version);
+        Ok(version)
     }
 
     fn find_pattern(&self, pattern: &[u8], ignore_address: Option<u64>) -> Option<usize> {
