@@ -322,11 +322,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         // Use last match to avoid false positives from earlier regions
         let last_match = *last_matches.last().expect("matches is non-empty");
         let address = last_match.wrapping_add_signed(offset_from_match);
-        debug!(
-            "  Found {} match(es), using last at 0x{:X}",
-            last_matches.len(),
-            address
-        );
         Ok(address)
     }
 
@@ -449,30 +444,12 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
         // Progressively expand search area until memory read fails
         while search_size <= MAX_SEARCH_SIZE {
-            debug!(
-                "  Searching for SongList pattern in {}MB area...",
-                search_size / 1024 / 1024
-            );
-
             match self.load_buffer_around(base_hint, search_size) {
                 Ok(()) => {
                     all_matches = self.find_all_matches(song_list_pattern);
-                    debug!(
-                        "    Found {} match(es) in {}MB",
-                        all_matches.len(),
-                        search_size / 1024 / 1024
-                    );
                 }
-                Err(e) => {
-                    debug!(
-                        "  Memory read failed at {}MB ({}), using previous results",
-                        search_size / 1024 / 1024,
-                        e
-                    );
-                    break;
-                }
+                Err(_) => break,
             }
-
             search_size *= 2;
         }
 
@@ -482,31 +459,26 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             ));
         }
 
-        debug!(
-            "  Found {} total candidate(s), validating by song count...",
-            all_matches.len()
-        );
-
         // Try candidates from first to last (use the "top one" per C# implementation)
         // Validate each by counting readable songs
         let mut song_list_addr: Option<u64> = None;
-        for (idx, &candidate) in all_matches.iter().enumerate() {
+        let mut selected_song_count = 0;
+        for &candidate in &all_matches {
             let song_count = self.count_songs_at_address(candidate);
-            debug!(
-                "    Candidate {} (0x{:X}): {} songs readable",
-                idx + 1,
-                candidate,
-                song_count
-            );
-
             if song_count >= MIN_EXPECTED_SONGS {
-                info!(
-                    "  Validated SongList at 0x{:X} with {} songs",
-                    candidate, song_count
-                );
                 song_list_addr = Some(candidate);
+                selected_song_count = song_count;
                 break;
             }
+        }
+
+        if let Some(addr) = song_list_addr {
+            debug!(
+                "  SongList: {} candidates, selected 0x{:X} ({} songs)",
+                all_matches.len(),
+                addr,
+                selected_song_count
+            );
         }
 
         let song_list = song_list_addr.ok_or_else(|| {
@@ -786,25 +758,13 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let center = song_list.saturating_sub(JUDGE_TO_SONG_LIST);
         let range = JUDGE_DATA_SEARCH_RANGE;
 
-        debug!(
-            "Searching JudgeData in narrow range: center=0x{:X}, range=±{}KB",
-            center,
-            range / 1024
-        );
-
-        if let Err(e) = self.load_buffer_around(center, range) {
-            debug!("  Memory load failed: {}", e);
+        if self.load_buffer_around(center, range).is_err() {
             return Err(Error::OffsetSearchFailed("Memory load failed".to_string()));
         }
 
         // Search for 72-byte zero pattern (initial state) or during-play pattern
         let zero_pattern = vec![0u8; judge::INITIAL_ZERO_SIZE];
         let candidates = self.find_all_matches(&zero_pattern);
-
-        debug!(
-            "  Found {} zero pattern candidates in narrow range",
-            candidates.len()
-        );
 
         // Validate each candidate
         for &candidate in &candidates {
@@ -830,14 +790,14 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             }
 
             debug!(
-                "    0x{:X} validated: markers=({}, {}), distance_from_center={}",
-                candidate, marker1, marker2, distance_from_center
+                "  JudgeData: {} candidates, selected 0x{:X} (narrow search)",
+                candidates.len(),
+                candidate
             );
             return Ok(candidate);
         }
 
         // If zero pattern search failed, try during-play validation
-        debug!("  Zero pattern search failed, trying during-play validation...");
         let base = self.reader.base_address();
         let start = center.saturating_sub(range as u64).max(base);
         let end = center.saturating_add(range as u64);
@@ -845,7 +805,10 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let mut candidate = (start + 3) & !3;
         while candidate < end {
             if self.validate_judge_data_during_play(candidate) {
-                debug!("    0x{:X} validated as JudgeData (during-play)", candidate);
+                debug!(
+                    "  JudgeData: selected 0x{:X} (during-play validation)",
+                    candidate
+                );
                 return Ok(candidate);
             }
             candidate += 4;
@@ -861,26 +824,18 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     /// Fallback method when narrow search fails.
     fn search_judge_data_flexible(&mut self, hint: u64) -> Result<u64> {
         // Try initial state pattern first
-        match self.search_judge_data_initial_state(hint) {
-            Ok(addr) => {
-                info!("  JudgeData found (initial state): 0x{:X}", addr);
-                return Ok(addr);
-            }
-            Err(e) => {
-                debug!("  JudgeData initial state search failed: {}", e);
-            }
+        if let Ok(addr) = self.search_judge_data_initial_state(hint) {
+            debug!("  JudgeData: selected 0x{:X} (initial state)", addr);
+            return Ok(addr);
         }
 
         // Fallback: during-play detection
         match self.search_judge_data_during_play(hint) {
             Ok(addr) => {
-                info!("  JudgeData found (during-play): 0x{:X}", addr);
+                debug!("  JudgeData: selected 0x{:X} (during-play)", addr);
                 Ok(addr)
             }
-            Err(e) => {
-                warn!("  JudgeData search failed (both methods): {}", e);
-                Err(e)
-            }
+            Err(e) => Err(e),
         }
     }
 
@@ -891,15 +846,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let center = judge_data.saturating_sub(JUDGE_TO_PLAY_SETTINGS);
         let range = PLAY_SETTINGS_SEARCH_RANGE;
 
-        debug!(
-            "Searching PlaySettings in narrow range: center=0x{:X}, range=±{}KB",
-            center,
-            range / 1024
-        );
-
         // Load buffer around the expected position
-        if let Err(e) = self.load_buffer_around(center, range) {
-            debug!("  Memory load failed: {}", e);
+        if self.load_buffer_around(center, range).is_err() {
             return Err(Error::OffsetSearchFailed("Memory load failed".to_string()));
         }
 
@@ -939,14 +887,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let center = play_settings + PLAY_SETTINGS_TO_PLAY_DATA;
         let range = PLAY_DATA_SEARCH_RANGE;
 
-        debug!(
-            "Searching PlayData in narrow range: center=0x{:X}, range=±{} bytes",
-            center, range
-        );
-
         // Load buffer around the expected position
-        if let Err(e) = self.load_buffer_around(center, range) {
-            debug!("  Memory load failed: {}", e);
+        if self.load_buffer_around(center, range).is_err() {
             return Err(Error::OffsetSearchFailed("Memory load failed".to_string()));
         }
 
@@ -989,13 +931,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let center = judge_data + JUDGE_TO_CURRENT_SONG;
         let range = CURRENT_SONG_SEARCH_RANGE;
 
-        debug!(
-            "Searching CurrentSong in narrow range: center=0x{:X}, range=±{} bytes",
-            center, range
-        );
-
-        if let Err(e) = self.load_buffer_around(center, range) {
-            debug!("  Memory load failed: {}", e);
+        if self.load_buffer_around(center, range).is_err() {
             return Err(Error::OffsetSearchFailed("Memory load failed".to_string()));
         }
 
@@ -1081,9 +1017,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     /// (P1/P2 judgments, combo breaks, fast/slow, measure ends).
     /// We validate candidates by checking STATE_MARKER positions.
     fn search_judge_data_initial_state(&mut self, data_map_hint: u64) -> Result<u64> {
-        debug!("Searching JudgeData with initial state pattern...");
-
-        // Expand search area
         let mut search_size = INITIAL_SEARCH_SIZE;
 
         while search_size <= MAX_SEARCH_SIZE {
@@ -1091,11 +1024,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
             let zero_pattern = vec![0u8; judge::INITIAL_ZERO_SIZE];
             let candidates = self.find_all_matches(&zero_pattern);
-            debug!(
-                "  Found {} zero pattern candidates in {}MB",
-                candidates.len(),
-                search_size / 1024 / 1024
-            );
 
             // Filter candidates by STATE_MARKER validation
             for candidate in &candidates {
@@ -1118,17 +1046,9 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                 // Typically judge_data is 2-10 MB away from data_map
                 let distance = (*candidate as i64 - data_map_hint as i64).abs();
                 if !(1_000_000..=15_000_000).contains(&distance) {
-                    debug!(
-                        "    0x{:X} rejected: distance from DataMap = {} bytes",
-                        candidate, distance
-                    );
                     continue;
                 }
 
-                debug!(
-                    "    0x{:X} validated: markers=({}, {}), distance={}",
-                    candidate, marker1, marker2, distance
-                );
                 return Ok(*candidate);
             }
 
@@ -1149,8 +1069,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     /// 3. Consistency check (combo_break <= total, fast+slow <= total)
     /// 4. P1/P2 exclusivity (in SP, one side should be all zeros)
     fn search_judge_data_during_play(&mut self, data_map_hint: u64) -> Result<u64> {
-        debug!("Searching JudgeData with during-play pattern...");
-
         let mut search_size = INITIAL_SEARCH_SIZE;
 
         while search_size <= MAX_SEARCH_SIZE {
@@ -1176,10 +1094,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                 }
 
                 if self.validate_judge_data_during_play(candidate) {
-                    debug!(
-                        "    0x{:X} validated as JudgeData (during-play), distance={}",
-                        candidate, distance
-                    );
                     return Ok(candidate);
                 }
 
@@ -1309,8 +1223,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     /// Used when marker search fails (e.g., during play when marker != 1).
     /// Scans memory near JudgeData and validates setting values.
     fn search_play_settings_by_values(&mut self, judge_data_hint: u64) -> Result<u64> {
-        debug!("Searching PlaySettings by values only...");
-
         let mut search_size = INITIAL_SEARCH_SIZE;
 
         while search_size <= MAX_SEARCH_SIZE {
@@ -1351,10 +1263,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                     && (0..=1).contains(&unknown)
                     && (0..=4).contains(&range)
                 {
-                    debug!(
-                        "    0x{:X} validated (fallback): style={}, gauge={}, assist={}, range={}, distance={}",
-                        candidate, style, gauge, assist, range, distance
-                    );
                     best_candidate = Some(candidate);
                 }
 
@@ -1362,7 +1270,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             }
 
             if let Some(addr) = best_candidate {
-                info!("  PlaySettings found via fallback: 0x{:X}", addr);
+                debug!("  PlaySettings: selected 0x{:X} (fallback)", addr);
                 return Ok(addr);
             }
 
@@ -1379,8 +1287,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     /// PlayData is typically located about 0x2B0-0x2C0 bytes after PlaySettings,
     /// but this offset varies between game versions.
     fn search_play_data_near_settings(&mut self, play_settings: u64) -> Result<u64> {
-        debug!("Searching PlayData near PlaySettings...");
-
         // Known offsets from different versions (try in order of likelihood)
         // 2025122400: 0x2C0 (704)
         // 2024-2025 (before 2025122400): 0x2B0 (688)
@@ -1389,19 +1295,12 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         // First, try known offsets
         for &offset in KNOWN_OFFSETS {
             let addr = play_settings + offset;
-            debug!("  Trying known offset 0x{:X} -> 0x{:X}", offset, addr);
-
             if let Ok(true) = self.validate_play_data_address(addr) {
-                info!(
-                    "  PlayData found at known offset 0x{:X} from PlaySettings",
-                    offset
-                );
                 return Ok(addr);
             }
         }
 
         // Fallback: scan around expected locations
-        debug!("  Known offsets failed, searching nearby...");
         let center = play_settings + 0x2B0; // Use older offset as center
         let tolerance: u64 = 100; // 100 bytes should be enough
 
@@ -1416,11 +1315,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                 }
 
                 if let Ok(true) = self.validate_play_data_address(addr) {
-                    info!(
-                        "  PlayData found at 0x{:X} (offset 0x{:X} from PlaySettings)",
-                        addr,
-                        addr - play_settings
-                    );
                     return Ok(addr);
                 }
             }
@@ -1447,20 +1341,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             && (0..=10000).contains(&ex_score)
             && (0..=3000).contains(&miss_count);
 
-        if is_initial_state || is_valid_play_data {
-            debug!(
-                "    0x{:X}: song_id={}, diff={}, ex={}, miss={} ({})",
-                addr,
-                song_id,
-                difficulty,
-                ex_score,
-                miss_count,
-                if is_initial_state { "initial" } else { "valid" }
-            );
-            return Ok(true);
-        }
-
-        Ok(false)
+        Ok(is_initial_state || is_valid_play_data)
     }
 
     /// Search for CurrentSong near JudgeData
@@ -1468,8 +1349,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     /// CurrentSong is typically located about 0x1E4-0x1F4 bytes after JudgeData,
     /// but this offset varies between game versions.
     fn search_current_song_near_judge(&mut self, judge_data: u64, play_data: u64) -> Result<u64> {
-        debug!("Searching CurrentSong near JudgeData...");
-
         // Known offsets from different versions (try in order of likelihood)
         // 2025122400: 0x1E4 (484)
         // 2024-2025 (before 2025122400): 0x1F4 (500)
@@ -1478,7 +1357,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         // First, try known offsets
         for &offset in KNOWN_OFFSETS {
             let addr = judge_data + offset;
-            debug!("  Trying known offset 0x{:X} -> 0x{:X}", offset, addr);
 
             // Ensure this isn't the same as PlayData
             let play_data_distance = (addr as i64 - play_data as i64).unsigned_abs();
@@ -1487,16 +1365,11 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             }
 
             if let Ok(true) = self.validate_current_song_address(addr) {
-                info!(
-                    "  CurrentSong found at known offset 0x{:X} from JudgeData",
-                    offset
-                );
                 return Ok(addr);
             }
         }
 
         // Fallback: scan around expected locations
-        debug!("  Known offsets failed, searching nearby...");
         let center = judge_data + 0x1F0; // Midpoint between known offsets
         let tolerance: u64 = 100;
 
@@ -1513,11 +1386,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                 }
 
                 if let Ok(true) = self.validate_current_song_address(addr) {
-                    info!(
-                        "  CurrentSong found at 0x{:X} (offset 0x{:X} from JudgeData)",
-                        addr,
-                        addr - judge_data
-                    );
                     return Ok(addr);
                 }
             }
@@ -1535,7 +1403,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
         // Accept initial state (zeros)
         if song_id == 0 && difficulty == 0 {
-            debug!("    0x{:X}: initial state (zeros)", addr);
             return Ok(true);
         }
 
@@ -1557,10 +1424,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             return Ok(false);
         }
 
-        debug!(
-            "    0x{:X}: song_id={}, difficulty={}, field3={} (valid)",
-            addr, song_id, difficulty, field3
-        );
         Ok(true)
     }
 
