@@ -62,6 +62,9 @@ impl Reflux {
                 .write_marquee(&self.config.livestream.marquee_idle_text);
         }
 
+        // Retry configuration for memory reads.
+        // These values provide exponential backoff (50ms, 100ms, 200ms) to handle
+        // transient read failures while keeping total retry time under 400ms.
         const MAX_READ_RETRIES: u32 = 3;
         const RETRY_DELAYS_MS: [u64; 3] = [50, 100, 200];
 
@@ -267,6 +270,11 @@ impl Reflux {
                 play_data.ex_score
             );
 
+            // Spawn async task to report play data to the remote server.
+            // Errors are recorded in error_tracker and logged here rather than being
+            // returned, as this is a fire-and-forget operation that shouldn't block
+            // the main game loop. The error_tracker aggregates all API errors and
+            // reports a summary at session end (see run() method).
             handle.spawn(async move {
                 if let Err(e) = api.report_play(form).await {
                     error_tracker.record("report_play", e.to_string(), &payload_summary);

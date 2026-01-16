@@ -199,17 +199,24 @@ impl IniParser {
     }
 
     fn get_bool(&self, section: &str, key: &str) -> bool {
-        self.get_string(section, key)
-            .to_lowercase()
-            .parse::<bool>()
-            .unwrap_or(false)
+        self.parse_bool_value(&self.get_string(section, key)).unwrap_or(false)
     }
 
     fn get_bool_opt(&self, section: &str, key: &str) -> Option<bool> {
         self.sections
             .get(section)
             .and_then(|s| s.get(key))
-            .and_then(|v| v.to_lowercase().parse::<bool>().ok())
+            .and_then(|v| self.parse_bool_value(v))
+    }
+
+    /// Parse a boolean value from various formats.
+    /// Accepts: "true", "false", "yes", "no", "1", "0" (case-insensitive)
+    fn parse_bool_value(&self, value: &str) -> Option<bool> {
+        match value.to_lowercase().as_str() {
+            "true" | "yes" | "1" => Some(true),
+            "false" | "no" | "0" => Some(false),
+            _ => None,
+        }
     }
 }
 

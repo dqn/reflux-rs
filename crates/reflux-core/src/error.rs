@@ -100,25 +100,41 @@ impl ApiErrorTracker {
         message: impl Into<String>,
         context: impl Into<String>,
     ) {
-        if let Ok(mut errors) = self.errors.lock() {
-            errors.push(ApiErrorRecord {
-                endpoint: endpoint.into(),
-                message: message.into(),
-                context: context.into(),
-            });
+        match self.errors.lock() {
+            Ok(mut errors) => {
+                errors.push(ApiErrorRecord {
+                    endpoint: endpoint.into(),
+                    message: message.into(),
+                    context: context.into(),
+                });
+            }
+            Err(e) => {
+                // Mutex is poisoned - another thread panicked while holding the lock.
+                // Log and continue; we don't want to propagate the panic.
+                tracing::warn!("ApiErrorTracker mutex poisoned, error not recorded: {}", e);
+            }
         }
     }
 
     /// Get the number of recorded errors
     pub fn count(&self) -> usize {
-        self.errors.lock().map(|e| e.len()).unwrap_or(0)
+        match self.errors.lock() {
+            Ok(e) => e.len(),
+            Err(e) => {
+                tracing::warn!("ApiErrorTracker mutex poisoned in count(): {}", e);
+                0
+            }
+        }
     }
 
     /// Get a summary of errors grouped by endpoint
     pub fn summary(&self) -> Vec<(String, usize)> {
         let errors = match self.errors.lock() {
             Ok(e) => e,
-            Err(_) => return Vec::new(),
+            Err(e) => {
+                tracing::warn!("ApiErrorTracker mutex poisoned in summary(): {}", e);
+                return Vec::new();
+            }
         };
 
         let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -133,8 +149,11 @@ impl ApiErrorTracker {
 
     /// Clear all recorded errors
     pub fn clear(&self) {
-        if let Ok(mut errors) = self.errors.lock() {
-            errors.clear();
+        match self.errors.lock() {
+            Ok(mut errors) => errors.clear(),
+            Err(e) => {
+                tracing::warn!("ApiErrorTracker mutex poisoned in clear(): {}", e);
+            }
         }
     }
 }

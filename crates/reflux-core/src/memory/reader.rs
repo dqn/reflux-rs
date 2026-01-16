@@ -112,6 +112,8 @@ impl<'a> MemoryReader<'a> {
 
         // This function guarantees all-or-nothing reads. Partial reads are treated as errors
         // because game memory structures require complete data for correct interpretation.
+        // Note: The game loop (game_loop.rs) implements retry logic with exponential backoff
+        // for transient read failures, so callers at that level handle recovery.
         if bytes_read != size {
             return Err(Error::MemoryReadFailed {
                 address,

@@ -412,7 +412,10 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let mut count = 0;
         let mut current_position: u64 = 0;
 
-        // Read up to a reasonable limit to avoid infinite loops
+        // Read up to a reasonable limit to avoid infinite loops.
+        // 5000 is chosen because INFINITAS has approximately 2000+ songs as of 2025,
+        // so this limit provides ample headroom for future expansion while preventing
+        // runaway iteration on invalid addresses.
         const MAX_SONGS_TO_CHECK: usize = 5000;
 
         while count < MAX_SONGS_TO_CHECK {
@@ -1357,16 +1360,14 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let ex_score = self.reader.read_i32(addr + 8).unwrap_or(-1);
         let miss_count = self.reader.read_i32(addr + 12).unwrap_or(-1);
 
-        // Accept initial state (all zeros) - game hasn't played any song yet
-        let is_initial_state = song_id == 0 && difficulty == 0 && ex_score == 0 && miss_count == 0;
-
-        // Accept valid play data
-        let is_valid_play_data = (0..=50000).contains(&song_id)
+        // Require song_id > 0 to avoid matching zero-filled memory regions
+        let is_valid_play_data = song_id > 0
+            && song_id < 100000
             && (0..=9).contains(&difficulty)
             && (0..=10000).contains(&ex_score)
             && (0..=3000).contains(&miss_count);
 
-        Ok(is_initial_state || is_valid_play_data)
+        Ok(is_valid_play_data)
     }
 
     /// Search for CurrentSong near JudgeData
@@ -1518,8 +1519,15 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         for prefix in lea_prefixes {
             for (pos, window) in self.buffer.windows(7).enumerate() {
                 if window[0..3] == prefix {
-                    // Extract RIP-relative offset
-                    let rel_offset = i32::from_le_bytes(window[3..7].try_into().unwrap_or([0; 4]));
+                    // Extract RIP-relative offset.
+                    // The slice window[3..7] is guaranteed to be exactly 4 bytes due to windows(7),
+                    // so try_into() cannot fail in practice. We use explicit error handling rather
+                    // than unwrap_or with a zero fallback to avoid silent failures.
+                    let offset_bytes: [u8; 4] = match window[3..7].try_into() {
+                        Ok(bytes) => bytes,
+                        Err(_) => continue,
+                    };
+                    let rel_offset = i32::from_le_bytes(offset_bytes);
 
                     // Calculate absolute address
                     // RIP points to next instruction (current_pos + 7)

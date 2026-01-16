@@ -183,6 +183,14 @@ impl Reflux {
         &self.config
     }
 
+    /// Update offsets while preserving tracker and game data
+    ///
+    /// This method updates the offsets without creating a new Reflux instance,
+    /// preserving the loaded tracker data and game state.
+    pub fn update_offsets(&mut self, offsets: OffsetsCollection) {
+        self.offsets = offsets;
+    }
+
     /// Export tracker data to TSV file
     pub fn export_tracker_tsv<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         crate::storage::export_tracker_tsv(

@@ -201,7 +201,8 @@ async fn main() -> Result<()> {
                         Ok(new_offsets) => {
                             if new_offsets.is_valid() {
                                 info!("Reloaded valid offsets version: {}", new_offsets.version);
-                                reflux = Reflux::new(reflux.config().clone(), new_offsets);
+                                // Use update_offsets to preserve tracker and game data
+                                reflux.update_offsets(new_offsets);
                             }
                         }
                         Err(e) => {

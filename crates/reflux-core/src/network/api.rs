@@ -137,20 +137,22 @@ impl RefluxApi {
 
         // Compare versions (format: YYYYMMDD)
         if remote_version > current_version {
-            // Save old content for archiving (before any file operations)
+            // Save old content for archiving (before any file operations).
+            // Note: old_content is read into memory here, so subsequent file operations
+            // do not create a race condition - the content is safely captured at this point.
             let old_content = if path.as_ref().exists() {
                 Some(fs::read_to_string(&path)?)
             } else {
                 None
             };
 
-            // Write to temp file first for atomic update
-            // TempFile ensures cleanup even if subsequent operations fail
+            // Write to temp file first for atomic update.
+            // TempFile ensures cleanup even if subsequent operations fail.
             let temp_file = TempFile::new(path.as_ref().with_extension("tmp"));
             fs::write(temp_file.path(), &content)?;
 
-            // Persist new file first to ensure update succeeds
-            // This is done before archiving to prevent data loss if persist fails
+            // Persist new file first to ensure update succeeds.
+            // This is done before archiving to prevent data loss if persist fails.
             temp_file.persist(path.as_ref())?;
 
             // Archive old content (best-effort, failure doesn't affect the update)

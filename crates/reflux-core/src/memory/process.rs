@@ -110,8 +110,11 @@ fn find_process_id(name: &str) -> Result<u32> {
     };
 
     // SAFETY: Process32FirstW and Process32NextW are safe to call with a valid snapshot handle
-    // and properly initialized PROCESSENTRY32W structure. The szExeFile array is always
-    // null-terminated or we find the end of the array.
+    // and properly initialized PROCESSENTRY32W structure.
+    //
+    // Note on null termination: The Windows API guarantees that szExeFile is always null-terminated.
+    // The .unwrap_or(entry.szExeFile.len()) is a defensive fallback that can never be reached in
+    // practice, but ensures safety if the invariant were ever violated.
     let result = unsafe {
         if Process32FirstW(snapshot, &mut entry).is_ok() {
             loop {
