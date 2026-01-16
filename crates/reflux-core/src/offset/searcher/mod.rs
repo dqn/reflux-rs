@@ -1020,9 +1020,16 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             return false;
         }
 
-        // Read song_id and difficulty - should be reasonable values
+        // Read song_id, difficulty, ex_score, miss_count - should be reasonable values
         let song_id = self.reader.read_i32(addr).unwrap_or(-1);
         let difficulty = self.reader.read_i32(addr + 4).unwrap_or(-1);
+        let ex_score = self.reader.read_i32(addr + 8).unwrap_or(-1);
+        let miss_count = self.reader.read_i32(addr + 12).unwrap_or(-1);
+
+        // Accept initial state (all zeros) - common when not in song select
+        if song_id == 0 && difficulty == 0 && ex_score == 0 && miss_count == 0 {
+            return true;
+        }
 
         // Song ID should be positive and reasonable (< 100000)
         // Difficulty should be 0-9 (10 difficulty levels)
@@ -1034,6 +1041,11 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         // Read song_id from both addresses - they should match
         let current_song_id = self.reader.read_i32(addr).unwrap_or(-1);
         let play_data_song_id = self.reader.read_i32(play_data).unwrap_or(-2);
+
+        // Accept initial state (both are zeros) - common when not in song select
+        if current_song_id == 0 && play_data_song_id == 0 {
+            return true;
+        }
 
         // Song IDs should match and be valid
         current_song_id > 0 && current_song_id == play_data_song_id
@@ -1359,6 +1371,11 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let difficulty = self.reader.read_i32(addr + 4).unwrap_or(-1);
         let ex_score = self.reader.read_i32(addr + 8).unwrap_or(-1);
         let miss_count = self.reader.read_i32(addr + 12).unwrap_or(-1);
+
+        // Accept initial state (all zeros) - common when not in song select
+        if song_id == 0 && difficulty == 0 && ex_score == 0 && miss_count == 0 {
+            return Ok(true);
+        }
 
         // Require song_id > 0 to avoid matching zero-filled memory regions
         let is_valid_play_data = song_id > 0
