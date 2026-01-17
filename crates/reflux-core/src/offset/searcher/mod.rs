@@ -798,7 +798,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let mut candidates = self.find_all_matches(&zero_pattern);
 
         // Debug: check if center is in candidates
-        let center_in_candidates = candidates.iter().any(|&c| c == center);
+        let center_in_candidates = candidates.contains(&center);
         debug!(
             "  Candidates: {} found, center (0x{:X}) in candidates: {}",
             candidates.len(),
