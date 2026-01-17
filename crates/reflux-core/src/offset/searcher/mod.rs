@@ -763,16 +763,61 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let center = song_list.saturating_sub(JUDGE_TO_SONG_LIST);
         let range = JUDGE_DATA_SEARCH_RANGE;
 
+        debug!("  JudgeData narrow search: center=0x{:X}, range={}", center, range);
+
         if self.load_buffer_around(center, range).is_err() {
             return Err(Error::OffsetSearchFailed("Memory load failed".to_string()));
+        }
+
+        // Debug: dump memory at center position to check if zero pattern exists there
+        let center_bytes: Vec<u8> = self
+            .reader
+            .read_bytes(center, judge::INITIAL_ZERO_SIZE)
+            .unwrap_or_default();
+        let non_zero_count = center_bytes.iter().filter(|&&b| b != 0).count();
+        debug!(
+            "  Memory at center (0x{:X}): {} bytes read, {} non-zero bytes",
+            center,
+            center_bytes.len(),
+            non_zero_count
+        );
+        if non_zero_count > 0 {
+            // Show first few non-zero positions
+            let non_zero_positions: Vec<_> = center_bytes
+                .iter()
+                .enumerate()
+                .filter(|&(_, b)| *b != 0)
+                .take(10)
+                .map(|(i, b)| format!("+0x{:X}=0x{:02X}", i, b))
+                .collect();
+            debug!("  Non-zero positions: {:?}", non_zero_positions);
         }
 
         // Search for 72-byte zero pattern (initial state) or during-play pattern
         let zero_pattern = vec![0u8; judge::INITIAL_ZERO_SIZE];
         let mut candidates = self.find_all_matches(&zero_pattern);
 
+        // Debug: check if center is in candidates
+        let center_in_candidates = candidates.iter().any(|&c| c == center);
+        debug!(
+            "  Candidates: {} found, center (0x{:X}) in candidates: {}",
+            candidates.len(),
+            center,
+            center_in_candidates
+        );
+
         // Sort candidates by distance from expected center to prioritize closest matches
         candidates.sort_by_key(|&c| c.abs_diff(center));
+
+        // Debug: show closest candidates
+        if !candidates.is_empty() {
+            let closest_5: Vec<_> = candidates
+                .iter()
+                .take(5)
+                .map(|&c| format!("0x{:X} (dist={})", c, c.abs_diff(center)))
+                .collect();
+            debug!("  Closest 5 candidates: {:?}", closest_5);
+        }
 
         // Validate each candidate
         for &candidate in &candidates {
