@@ -20,7 +20,7 @@
 //! │                                          ▼               │
 //! │  PlaySettings  ◄──── 0x2ACEE8 ────► JudgeData ◄──(2)    │
 //! │       │                                  │               │
-//! │       │ 0x2C0                           │ 0x1E4         │
+//! │       │ 0x2C0                           │ 0x160         │
 //! │       ▼                                  ▼               │
 //! │   PlayData ◄──(4)                   CurrentSong ◄──(5)  │
 //! │       ▲                                                  │
@@ -82,10 +82,10 @@ pub const PLAY_SETTINGS_TO_PLAY_DATA: u64 = 0x2C0;
 /// This is ~16x the measured variation to ensure reliable detection.
 pub const PLAY_DATA_SEARCH_RANGE: usize = 0x100;
 
-/// Expected offset: currentSong - judgeData ≈ 0x1E4
+/// Expected offset: currentSong - judgeData ≈ 0x160
 ///
 /// Historical variation: ±0x10 (16 bytes)
-pub const JUDGE_TO_CURRENT_SONG: u64 = 0x1E4;
+pub const JUDGE_TO_CURRENT_SONG: u64 = 0x160;
 
 /// Search range for currentSong (±256 bytes)
 ///
