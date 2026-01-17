@@ -45,6 +45,12 @@ pub const MAX_SEARCH_SIZE: usize = 300 * 1024 * 1024;
 /// Minimum number of songs expected in INFINITAS (for validation)
 pub const MIN_EXPECTED_SONGS: usize = 1000;
 
+/// Minimum valid song ID in IIDX (song IDs start from 1000)
+pub const MIN_SONG_ID: i32 = 1000;
+
+/// Maximum valid song ID in IIDX (reasonable upper bound)
+pub const MAX_SONG_ID: i32 = 50000;
+
 // ============================================================================
 // Relative Offsets (derived from historical analysis of 9 versions)
 // ============================================================================

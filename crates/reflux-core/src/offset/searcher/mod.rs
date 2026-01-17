@@ -911,7 +911,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
     /// Narrow search for PlaySettings near JudgeData using relative offset
     ///
-    /// Search range: ±8KB around expected position (judgeData - 0x2ACE00)
+    /// Search range: ±8KB around expected position (judgeData - 0x2ACEE8)
     fn search_play_settings_near_judge_narrow(&mut self, judge_data: u64) -> Result<u64> {
         let center = judge_data.saturating_sub(JUDGE_TO_PLAY_SETTINGS);
         let range = PLAY_SETTINGS_SEARCH_RANGE;
@@ -926,7 +926,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let start = center.saturating_sub(range as u64).max(base);
         let end = center.saturating_add(range as u64);
 
-        let mut best_candidate: Option<u64> = None;
+        // Collect all valid candidates
+        let mut candidates: Vec<u64> = Vec::new();
         let mut candidate = (start + 3) & !3; // 4-byte alignment
 
         while candidate < end {
@@ -940,14 +941,29 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
             // Read and validate settings values
             if let Some(addr) = self.validate_play_settings_at(candidate) {
-                best_candidate = Some(addr);
+                candidates.push(addr);
             }
             candidate += 4;
         }
 
-        best_candidate.ok_or_else(|| {
-            Error::OffsetSearchFailed("PlaySettings not found in narrow range".to_string())
-        })
+        if candidates.is_empty() {
+            return Err(Error::OffsetSearchFailed(
+                "PlaySettings not found in narrow range".to_string(),
+            ));
+        }
+
+        // Select candidate closest to expected center
+        candidates.sort_by_key(|&c| c.abs_diff(center));
+        let selected = candidates[0];
+
+        debug!(
+            "  PlaySettings: {} candidates, selected 0x{:X} (distance from expected: {})",
+            candidates.len(),
+            selected,
+            selected.abs_diff(center)
+        );
+
+        Ok(selected)
     }
 
     /// Narrow search for PlayData near PlaySettings using relative offset
@@ -966,7 +982,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let start = center.saturating_sub(range as u64).max(base);
         let end = center.saturating_add(range as u64);
 
-        let mut best_candidate: Option<u64> = None;
+        // Collect all valid candidates
+        let mut candidates: Vec<u64> = Vec::new();
         let mut candidate = (start + 3) & !3;
 
         while candidate < end {
@@ -980,14 +997,29 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             // PlayData validation: check if it looks like valid play data
             // (song_id should be reasonable, difficulty 0-9, etc.)
             if self.validate_play_data_at(candidate, play_settings) {
-                best_candidate = Some(candidate);
+                candidates.push(candidate);
             }
             candidate += 4;
         }
 
-        best_candidate.ok_or_else(|| {
-            Error::OffsetSearchFailed("PlayData not found in narrow range".to_string())
-        })
+        if candidates.is_empty() {
+            return Err(Error::OffsetSearchFailed(
+                "PlayData not found in narrow range".to_string(),
+            ));
+        }
+
+        // Select candidate closest to expected center
+        candidates.sort_by_key(|&c| c.abs_diff(center));
+        let selected = candidates[0];
+
+        debug!(
+            "  PlayData: {} candidates, selected 0x{:X} (distance from expected: {})",
+            candidates.len(),
+            selected,
+            selected.abs_diff(center)
+        );
+
+        Ok(selected)
     }
 
     /// Narrow search for CurrentSong near JudgeData using relative offset
@@ -1009,7 +1041,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         let start = center.saturating_sub(range as u64).max(base);
         let end = center.saturating_add(range as u64);
 
-        let mut best_candidate: Option<u64> = None;
+        // Collect all valid candidates
+        let mut candidates: Vec<u64> = Vec::new();
         let mut candidate = (start + 3) & !3;
 
         while candidate < end {
@@ -1022,14 +1055,29 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
             // CurrentSong should have the same song_id as PlayData
             if self.validate_current_song_at(candidate, play_data) {
-                best_candidate = Some(candidate);
+                candidates.push(candidate);
             }
             candidate += 4;
         }
 
-        best_candidate.ok_or_else(|| {
-            Error::OffsetSearchFailed("CurrentSong not found in narrow range".to_string())
-        })
+        if candidates.is_empty() {
+            return Err(Error::OffsetSearchFailed(
+                "CurrentSong not found in narrow range".to_string(),
+            ));
+        }
+
+        // Select candidate closest to expected center
+        candidates.sort_by_key(|&c| c.abs_diff(center));
+        let selected = candidates[0];
+
+        debug!(
+            "  CurrentSong: {} candidates, selected 0x{:X} (distance from expected: {})",
+            candidates.len(),
+            selected,
+            selected.abs_diff(center)
+        );
+
+        Ok(selected)
     }
 
     /// Validate if the given address contains valid PlaySettings
@@ -1073,9 +1121,9 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             return true;
         }
 
-        // Song ID should be positive and reasonable (< 100000)
+        // Song ID should be in valid IIDX range (>= 1000)
         // Difficulty should be 0-9 (10 difficulty levels)
-        song_id > 0 && song_id < 100000 && (0..=9).contains(&difficulty)
+        (MIN_SONG_ID..=MAX_SONG_ID).contains(&song_id) && (0..=9).contains(&difficulty)
     }
 
     /// Validate if the given address contains PlayData in initial state (all zeros)
@@ -1322,6 +1370,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     /// Scans memory near JudgeData and validates setting values.
     fn search_play_settings_by_values(&mut self, judge_data_hint: u64) -> Result<u64> {
         let mut search_size = INITIAL_SEARCH_SIZE;
+        let expected = judge_data_hint.saturating_sub(JUDGE_TO_PLAY_SETTINGS);
 
         while search_size <= MAX_SEARCH_SIZE {
             self.load_buffer_around(judge_data_hint, search_size)?;
@@ -1336,7 +1385,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             // Align to 4 bytes
             let aligned_start = (search_start + 3) & !3;
 
-            let mut best_candidate: Option<u64> = None;
+            // Collect all valid candidates
+            let mut candidates: Vec<u64> = Vec::new();
             let mut candidate = aligned_start;
 
             while candidate < search_end {
@@ -1361,15 +1411,23 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                     && (0..=1).contains(&unknown)
                     && (0..=4).contains(&range)
                 {
-                    best_candidate = Some(candidate);
+                    candidates.push(candidate);
                 }
 
                 candidate += 4;
             }
 
-            if let Some(addr) = best_candidate {
-                debug!("  PlaySettings: selected 0x{:X} (fallback)", addr);
-                return Ok(addr);
+            if !candidates.is_empty() {
+                // Select candidate closest to expected position
+                candidates.sort_by_key(|&c| c.abs_diff(expected));
+                let selected = candidates[0];
+                debug!(
+                    "  PlaySettings: {} candidates, selected 0x{:X} (fallback, distance from expected: {})",
+                    candidates.len(),
+                    selected,
+                    selected.abs_diff(expected)
+                );
+                return Ok(selected);
             }
 
             search_size *= 2;
@@ -1435,9 +1493,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             return Ok(true);
         }
 
-        // Require song_id > 0 to avoid matching zero-filled memory regions
-        let is_valid_play_data = song_id > 0
-            && song_id < 100000
+        // Require song_id in valid IIDX range (>= 1000)
+        let is_valid_play_data = (MIN_SONG_ID..=MAX_SONG_ID).contains(&song_id)
             && (0..=9).contains(&difficulty)
             && (0..=10000).contains(&ex_score)
             && (0..=3000).contains(&miss_count);
