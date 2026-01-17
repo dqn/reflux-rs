@@ -835,12 +835,13 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             let current_song_id = self.reader.read_i32(current_song_addr).unwrap_or(-1);
             let current_difficulty = self.reader.read_i32(current_song_addr + 4).unwrap_or(-1);
 
-            // Valid CurrentSong: either initial state (0, 0) or valid song (id >= 1000, diff 0-9)
-            let is_initial_state = current_song_id == 0 && current_difficulty == 0;
+            // Valid CurrentSong: song_id in valid range (1000-50000), difficulty 0-9
+            // Note: We don't accept initial state (0, 0) because it can cause false positives
+            // in the song select screen where a valid song should always be selected
             let is_valid_song = (MIN_SONG_ID..=MAX_SONG_ID).contains(&current_song_id)
                 && (0..=9).contains(&current_difficulty);
 
-            if !is_initial_state && !is_valid_song {
+            if !is_valid_song {
                 continue;
             }
 

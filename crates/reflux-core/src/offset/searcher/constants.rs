@@ -65,10 +65,10 @@ pub const JUDGE_TO_PLAY_SETTINGS: u64 = 0x2ACEE8;
 /// This is ~32x the measured variation to ensure reliable detection.
 pub const PLAY_SETTINGS_SEARCH_RANGE: usize = 0x2000;
 
-/// Expected offset: songList - judgeData ≈ 0x94E000
+/// Expected offset: songList - judgeData ≈ 0x94E374
 ///
 /// Historical variation: ±0x600 (1.5KB)
-pub const JUDGE_TO_SONG_LIST: u64 = 0x94E000;
+pub const JUDGE_TO_SONG_LIST: u64 = 0x94E374;
 
 /// Expected offset: playData - playSettings ≈ 0x2C0
 ///
