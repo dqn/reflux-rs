@@ -118,3 +118,13 @@ pub const DATA_MAP_NODE_SAMPLES: usize = 32;
 ///
 /// This is the same range as songList search since it uses the same relative offset.
 pub const JUDGE_DATA_SEARCH_RANGE: usize = 0x10000;
+
+// ============================================================================
+// DataMap entry filtering
+// ============================================================================
+
+/// Sentinel value in INFINITAS data map that should be treated as null.
+///
+/// This specific value (0x494fdce0) appears in the data map hash table as a
+/// special marker and should be filtered out when counting valid entries.
+pub const DATA_MAP_SENTINEL: u64 = 0x494fdce0;

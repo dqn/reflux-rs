@@ -34,7 +34,9 @@ enum TrackerParseError {
 }
 
 /// Parse a single tracker line into ChartKey and TrackerInfo
-fn parse_tracker_line(line: &str) -> std::result::Result<(ChartKey, TrackerInfo), TrackerParseError> {
+fn parse_tracker_line(
+    line: &str,
+) -> std::result::Result<(ChartKey, TrackerInfo), TrackerParseError> {
     let parts: Vec<&str> = line.split(',').collect();
     if parts.len() < 6 {
         return Err(TrackerParseError::FieldCount);
@@ -48,23 +50,18 @@ fn parse_tracker_line(line: &str) -> std::result::Result<(ChartKey, TrackerInfo)
         .parse::<u8>()
         .map_err(|_| TrackerParseError::Difficulty(parts[1].to_string()))
         .and_then(|v| {
-            Difficulty::from_u8(v)
-                .ok_or_else(|| TrackerParseError::Difficulty(v.to_string()))
+            Difficulty::from_u8(v).ok_or_else(|| TrackerParseError::Difficulty(v.to_string()))
         })?;
 
     let grade = parts[2]
         .parse::<u8>()
         .map_err(|_| TrackerParseError::Grade(parts[2].to_string()))
-        .and_then(|v| {
-            Grade::from_u8(v).ok_or_else(|| TrackerParseError::Grade(v.to_string()))
-        })?;
+        .and_then(|v| Grade::from_u8(v).ok_or_else(|| TrackerParseError::Grade(v.to_string())))?;
 
     let lamp = parts[3]
         .parse::<u8>()
         .map_err(|_| TrackerParseError::Lamp(parts[3].to_string()))
-        .and_then(|v| {
-            Lamp::from_u8(v).ok_or_else(|| TrackerParseError::Lamp(v.to_string()))
-        })?;
+        .and_then(|v| Lamp::from_u8(v).ok_or_else(|| TrackerParseError::Lamp(v.to_string())))?;
 
     let ex_score: u32 = parts[4]
         .parse()
@@ -224,7 +221,10 @@ impl Tracker {
             ));
         }
 
-        fs::write(path, lines.join("\n"))?;
+        // Atomic write: write to temp file then rename
+        let tmp_path = path.as_ref().with_extension("tmp");
+        fs::write(&tmp_path, lines.join("\n"))?;
+        fs::rename(&tmp_path, path)?;
         Ok(())
     }
 

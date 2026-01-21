@@ -93,12 +93,12 @@ impl GameStateDetector {
             return GameState::SongSelect;
         }
 
-        // Playing から遷移した場合のみ ResultScreen とみなす
+        // Only treat as ResultScreen when transitioning from Playing
         if last_state == GameState::Playing {
             return GameState::ResultScreen;
         }
 
-        // SongSelect から遷移中は SongSelect を維持（C# 実装と同等）
+        // Maintain SongSelect during intermediate transitions (equivalent to C# implementation)
         // "Cannot go from song select to result screen anyway"
         if last_state == GameState::SongSelect {
             return GameState::SongSelect;

@@ -1,10 +1,13 @@
 use anyhow::{Result, bail};
 use clap::Parser;
+#[cfg(test)]
+use reflux_core::UnlockType;
 use reflux_core::game::find_game_version;
 use reflux_core::{
     CustomTypes, EncodingFixes, MemoryReader, OffsetSearcher, OffsetsCollection, ProcessHandle,
-    Reflux, ScoreMap, builtin_signatures, fetch_song_database_with_fixes,
+    Reflux, ScoreMap, SongInfo, builtin_signatures, fetch_song_database_with_fixes,
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -12,17 +15,49 @@ use std::time::Duration;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
+/// Minimum number of songs expected in the song database
+const MIN_EXPECTED_SONGS: usize = 1000;
+/// Song ID used to verify data readiness (READY FOR TAKEOFF)
+const READY_SONG_ID: u32 = 80003;
+/// Difficulty index to check for note count (SPA)
+const READY_DIFF_INDEX: usize = 3;
+/// Minimum note count expected for the reference song
+const READY_MIN_NOTES: u32 = 10;
+
+/// Validation result for song database
+#[derive(Debug, PartialEq, Eq)]
+enum ValidationResult {
+    Valid,
+    TooFewSongs(usize),
+    NotecountTooSmall(u32),
+    ReferenceSongMissing,
+}
+
+/// Validate the song database is fully populated
+fn validate_song_database(db: &HashMap<u32, SongInfo>) -> ValidationResult {
+    if db.len() < MIN_EXPECTED_SONGS {
+        return ValidationResult::TooFewSongs(db.len());
+    }
+
+    if let Some(song) = db.get(&READY_SONG_ID) {
+        let notes = song.total_notes.get(READY_DIFF_INDEX).copied().unwrap_or(0);
+        if notes < READY_MIN_NOTES {
+            return ValidationResult::NotecountTooSmall(notes);
+        }
+    } else {
+        return ValidationResult::ReferenceSongMissing;
+    }
+
+    ValidationResult::Valid
+}
+
 fn load_song_database_with_retry(
     reader: &MemoryReader,
     song_list: u64,
     encoding_fixes: Option<&EncodingFixes>,
-) -> Result<std::collections::HashMap<u32, reflux_core::SongInfo>> {
+) -> Result<HashMap<u32, SongInfo>> {
     const RETRY_DELAY_MS: u64 = 5000;
     const EXTRA_DELAY_MS: u64 = 1000;
-    const MIN_EXPECTED_SONGS: usize = 1000;
-    const READY_SONG_ID: u32 = 80003;
-    const READY_DIFF_INDEX: usize = 3; // SPB, SPN, SPH, SPA, ...
-    const READY_MIN_NOTES: u32 = 10;
     const MAX_ATTEMPTS: u32 = 12;
 
     let mut attempts = 0u32;
@@ -37,27 +72,24 @@ fn load_song_database_with_retry(
         }
         attempts += 1;
 
-        // データ初期化のタイミングに合わせて少し待つ
+        // Wait for data initialization
         thread::sleep(Duration::from_millis(EXTRA_DELAY_MS));
 
         match fetch_song_database_with_fixes(reader, song_list, encoding_fixes) {
             Ok(db) => {
-                if db.len() < MIN_EXPECTED_SONGS {
-                    last_error = Some(format!("song list too small ({})", db.len()));
-                    warn!(
-                        "Song list not fully populated ({} songs), retrying in {}s (attempt {}/{})",
-                        db.len(),
-                        RETRY_DELAY_MS / 1000,
-                        attempts,
-                        MAX_ATTEMPTS
-                    );
-                    thread::sleep(Duration::from_millis(RETRY_DELAY_MS));
-                    continue;
-                }
-
-                if let Some(song) = db.get(&READY_SONG_ID) {
-                    let notes = song.total_notes.get(READY_DIFF_INDEX).copied().unwrap_or(0);
-                    if notes < READY_MIN_NOTES {
+                match validate_song_database(&db) {
+                    ValidationResult::Valid => return Ok(db),
+                    ValidationResult::TooFewSongs(count) => {
+                        last_error = Some(format!("song list too small ({})", count));
+                        warn!(
+                            "Song list not fully populated ({} songs), retrying in {}s (attempt {}/{})",
+                            count,
+                            RETRY_DELAY_MS / 1000,
+                            attempts,
+                            MAX_ATTEMPTS
+                        );
+                    }
+                    ValidationResult::NotecountTooSmall(notes) => {
                         last_error = Some(format!(
                             "notecount too small (song {}, notes {})",
                             READY_SONG_ID, notes
@@ -70,17 +102,16 @@ fn load_song_database_with_retry(
                             attempts,
                             MAX_ATTEMPTS
                         );
-                        thread::sleep(Duration::from_millis(RETRY_DELAY_MS));
-                        continue;
                     }
-                } else {
-                    warn!(
-                        "Song {} not found in song list, accepting current list",
-                        READY_SONG_ID
-                    );
+                    ValidationResult::ReferenceSongMissing => {
+                        warn!(
+                            "Song {} not found in song list, accepting current list",
+                            READY_SONG_ID
+                        );
+                        return Ok(db);
+                    }
                 }
-
-                return Ok(db);
+                thread::sleep(Duration::from_millis(RETRY_DELAY_MS));
             }
             Err(e) => {
                 last_error = Some(e.to_string());
@@ -333,4 +364,88 @@ fn main() -> Result<()> {
 
     info!("Shutdown complete");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_song(total_notes: [u32; 10]) -> SongInfo {
+        SongInfo {
+            id: 0,
+            title: "Test".into(),
+            title_english: "Test".into(),
+            artist: "".into(),
+            genre: "".into(),
+            bpm: "".into(),
+            folder: 0,
+            levels: [0; 10],
+            total_notes,
+            unlock_type: UnlockType::default(),
+        }
+    }
+
+    #[test]
+    fn test_validate_song_database_empty() {
+        let db = HashMap::new();
+        assert_eq!(
+            validate_song_database(&db),
+            ValidationResult::TooFewSongs(0)
+        );
+    }
+
+    #[test]
+    fn test_validate_song_database_too_small() {
+        let mut db = HashMap::new();
+        for i in 0..500 {
+            db.insert(i, create_test_song([100; 10]));
+        }
+        assert_eq!(
+            validate_song_database(&db),
+            ValidationResult::TooFewSongs(500)
+        );
+    }
+
+    #[test]
+    fn test_validate_song_database_missing_reference_song() {
+        let mut db = HashMap::new();
+        for i in 0..1100 {
+            db.insert(i, create_test_song([100; 10]));
+        }
+        assert_eq!(
+            validate_song_database(&db),
+            ValidationResult::ReferenceSongMissing
+        );
+    }
+
+    #[test]
+    fn test_validate_song_database_notecount_too_small() {
+        let mut db = HashMap::new();
+        for i in 0..1100 {
+            db.insert(i, create_test_song([100; 10]));
+        }
+        // Add reference song with insufficient notes
+        db.insert(
+            READY_SONG_ID,
+            create_test_song([0, 0, 0, 5, 0, 0, 0, 0, 0, 0]),
+        );
+        assert_eq!(
+            validate_song_database(&db),
+            ValidationResult::NotecountTooSmall(5)
+        );
+    }
+
+    #[test]
+    fn test_validate_song_database_valid() {
+        let mut db = HashMap::new();
+        for i in 0..1100 {
+            db.insert(i, create_test_song([100; 10]));
+        }
+        // Add reference song with sufficient notes
+        db.insert(
+            READY_SONG_ID,
+            create_test_song([100, 200, 300, 500, 600, 0, 0, 0, 0, 0]),
+        );
+        assert_eq!(validate_song_database(&db), ValidationResult::Valid);
+    }
 }

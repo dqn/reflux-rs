@@ -1,3 +1,13 @@
+//! # reflux-core
+//!
+//! Core library for the Reflux score tracker.
+//!
+//! This crate provides:
+//! - Game data structures (PlayData, Judge, Settings, etc.)
+//! - Windows process memory reading
+//! - Offset detection via signature scanning
+//! - Score tracking and session management
+
 pub mod error;
 pub mod game;
 pub mod memory;

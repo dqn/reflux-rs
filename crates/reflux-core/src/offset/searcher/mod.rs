@@ -449,7 +449,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                 buffer[i * 8 + 7],
             ]);
 
-            if addr != 0 && addr != null_obj && addr != 0x494fdce0 {
+            if addr != 0 && addr != null_obj && addr != DATA_MAP_SENTINEL {
                 non_null_entries += 1;
                 entry_points.push(addr);
             }

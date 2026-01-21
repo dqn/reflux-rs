@@ -18,11 +18,11 @@ use tracing::{debug, error, info, warn};
 const MAX_READ_RETRIES: u32 = 3;
 const RETRY_DELAYS_MS: [u64; 3] = [50, 100, 200];
 
-/// Result screen polling settings.
-/// 100ms × 50 = 5 seconds max wait for play data to become available.
-/// INFINITAS needs time to finalize data after screen transition.
-const MAX_POLL_ATTEMPTS: u32 = 50;
-const POLL_INTERVAL_MS: u64 = 100;
+/// Result screen polling delays (exponential backoff).
+/// Total: 50+50+100+100+200+200+300+300+500+500 = 2.3 seconds max.
+/// Faster initial polling catches quick data availability, while exponential
+/// backoff reduces CPU usage if data takes longer to populate.
+const POLL_DELAYS_MS: [u64; 10] = [50, 50, 100, 100, 200, 200, 300, 300, 500, 500];
 
 use crate::error::Result;
 use crate::game::{
@@ -136,9 +136,9 @@ impl Reflux {
 
     /// Handle transition to result screen
     fn handle_result_screen(&mut self, reader: &MemoryReader) {
-        // Poll until play data becomes available (max 5 seconds)
-        for attempt in 0..MAX_POLL_ATTEMPTS {
-            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+        // Poll until play data becomes available (exponential backoff)
+        for (attempt, &delay) in POLL_DELAYS_MS.iter().enumerate() {
+            thread::sleep(Duration::from_millis(delay));
 
             match self.fetch_play_data(reader) {
                 Ok(play_data) => {
@@ -153,18 +153,19 @@ impl Reflux {
                         return;
                     }
                     // Data not ready yet, continue polling
-                    if attempt == MAX_POLL_ATTEMPTS - 1 {
+                    if attempt == POLL_DELAYS_MS.len() - 1 {
                         warn!(
                             "Play data notes count is zero after {} attempts",
-                            MAX_POLL_ATTEMPTS
+                            POLL_DELAYS_MS.len()
                         );
                     }
                 }
                 Err(e) => {
-                    if attempt == MAX_POLL_ATTEMPTS - 1 {
+                    if attempt == POLL_DELAYS_MS.len() - 1 {
                         error!(
                             "Failed to fetch play data after {} attempts: {}",
-                            MAX_POLL_ATTEMPTS, e
+                            POLL_DELAYS_MS.len(),
+                            e
                         );
                     }
                 }
@@ -276,24 +277,7 @@ impl Reflux {
         let data_available =
             !settings.h_ran && !settings.battle && settings.assist == AssistType::Off;
 
-        // Get or create chart info
-        let chart = if let Some(song) = self.game_data.song_db.get(&song_id) {
-            ChartInfo::from_song_info(song, difficulty, true)
-        } else {
-            // Create minimal chart info
-            ChartInfo {
-                song_id,
-                title: format!("Song {:05}", song_id).into(),
-                title_english: format!("Song {:05}", song_id).into(),
-                artist: "".into(),
-                genre: "".into(),
-                bpm: "".into(),
-                difficulty,
-                level: 0,
-                total_notes: 0,
-                unlocked: true,
-            }
-        };
+        let chart = self.create_chart_info(song_id, difficulty);
 
         // Calculate grade
         let grade = if chart.total_notes > 0 {
@@ -302,14 +286,7 @@ impl Reflux {
             Grade::NoPlay
         };
 
-        // Read gauge (P1 + P2 combined)
-        let gauge_p1 = reader
-            .read_i32(self.offsets.judge_data + judge::P1_GAUGE)
-            .unwrap_or(0);
-        let gauge_p2 = reader
-            .read_i32(self.offsets.judge_data + judge::P2_GAUGE)
-            .unwrap_or(0);
-        let gauge = (gauge_p1 + gauge_p2) as u8;
+        let gauge = self.read_gauge(reader);
 
         Ok(PlayData {
             timestamp: Utc::now(),
@@ -322,6 +299,37 @@ impl Reflux {
             settings,
             data_available,
         })
+    }
+
+    /// Create chart info from song database or generate a placeholder
+    fn create_chart_info(&self, song_id: u32, difficulty: Difficulty) -> ChartInfo {
+        if let Some(song) = self.game_data.song_db.get(&song_id) {
+            ChartInfo::from_song_info(song, difficulty, true)
+        } else {
+            ChartInfo {
+                song_id,
+                title: format!("Song {:05}", song_id).into(),
+                title_english: format!("Song {:05}", song_id).into(),
+                artist: "".into(),
+                genre: "".into(),
+                bpm: "".into(),
+                difficulty,
+                level: 0,
+                total_notes: 0,
+                unlocked: true,
+            }
+        }
+    }
+
+    /// Read gauge value from memory (P1 + P2 combined)
+    fn read_gauge(&self, reader: &MemoryReader) -> u8 {
+        let gauge_p1 = reader
+            .read_i32(self.offsets.judge_data + judge::P1_GAUGE)
+            .unwrap_or(0);
+        let gauge_p2 = reader
+            .read_i32(self.offsets.judge_data + judge::P2_GAUGE)
+            .unwrap_or(0);
+        (gauge_p1 + gauge_p2) as u8
     }
 
     fn fetch_judge_data(&self, reader: &MemoryReader) -> Result<Judge> {
