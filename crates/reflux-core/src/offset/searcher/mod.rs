@@ -101,19 +101,20 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
         // Phase 3: PlaySettings
         info!("Phase 3: Searching PlaySettings via signatures...");
-        offsets.play_settings =
-            match self.search_offset_by_signature(signatures, "playSettings", |this, addr| {
-                this.validate_play_settings_at(addr).is_some()
-            }) {
-                Ok(addr) => addr,
-                Err(e) => {
-                    warn!(
-                        "PlaySettings signature search failed: {}. Falling back to relative search...",
-                        e
-                    );
-                    self.search_play_settings_near_judge_data(offsets.judge_data)?
-                }
-            };
+        offsets.play_settings = match self.search_offset_by_signature(
+            signatures,
+            "playSettings",
+            |this, addr| this.validate_play_settings_at(addr).is_some(),
+        ) {
+            Ok(addr) => addr,
+            Err(e) => {
+                warn!(
+                    "PlaySettings signature search failed: {}. Falling back to relative search...",
+                    e
+                );
+                self.search_play_settings_near_judge_data(offsets.judge_data)?
+            }
+        };
         info!("  PlaySettings: 0x{:X}", offsets.play_settings);
 
         // Phase 4: PlayData
@@ -135,19 +136,20 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
         // Phase 5: CurrentSong
         info!("Phase 5: Searching CurrentSong via signatures...");
-        offsets.current_song =
-            match self.search_offset_by_signature(signatures, "currentSong", |this, addr| {
-                this.validate_current_song_address(addr).unwrap_or(false)
-            }) {
-                Ok(addr) => addr,
-                Err(e) => {
-                    warn!(
-                        "CurrentSong signature search failed: {}. Falling back to relative search...",
-                        e
-                    );
-                    self.search_current_song_near_judge_data(offsets.judge_data)?
-                }
-            };
+        offsets.current_song = match self.search_offset_by_signature(
+            signatures,
+            "currentSong",
+            |this, addr| this.validate_current_song_address(addr).unwrap_or(false),
+        ) {
+            Ok(addr) => addr,
+            Err(e) => {
+                warn!(
+                    "CurrentSong signature search failed: {}. Falling back to relative search...",
+                    e
+                );
+                self.search_current_song_near_judge_data(offsets.judge_data)?
+            }
+        };
         info!("  CurrentSong: 0x{:X}", offsets.current_song);
 
         // Phase 6: DataMap / UnlockData (pattern search, using SongList as hint)
