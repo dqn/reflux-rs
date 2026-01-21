@@ -53,6 +53,19 @@ impl Reflux {
     pub fn new(offsets: OffsetsCollection) -> Self {
         let stream_output = StreamOutput::new(false, ".".to_string());
 
+        // Log offset validation status
+        if offsets.has_state_detection_offsets() {
+            info!(
+                "State detection offsets: judge_data=0x{:X}, play_settings=0x{:X}",
+                offsets.judge_data, offsets.play_settings
+            );
+        } else {
+            warn!(
+                "State detection offsets not fully initialized: judge_data=0x{:X}, play_settings=0x{:X}",
+                offsets.judge_data, offsets.play_settings
+            );
+        }
+
         Self {
             offsets,
             game_data: GameData::new(),

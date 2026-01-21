@@ -99,20 +99,43 @@ impl Reflux {
     }
 
     fn detect_game_state(&mut self, reader: &MemoryReader) -> Result<GameState> {
-        // Read markers for state detection
-        let state_marker_1 = reader
-            .read_i32(self.offsets.judge_data + judge::STATE_MARKER_1)
-            .unwrap_or(0);
-        let state_marker_2 = reader
-            .read_i32(self.offsets.judge_data + judge::STATE_MARKER_2)
-            .unwrap_or(0);
-        let song_select_marker = reader
-            .read_i32(
-                self.offsets
-                    .play_settings
-                    .wrapping_sub(settings::SONG_SELECT_MARKER),
-            )
-            .unwrap_or(0);
+        // Read markers for state detection with detailed error logging
+        let state_marker_1 = match reader.read_i32(self.offsets.judge_data + judge::STATE_MARKER_1)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("Failed to read state_marker_1: {}", e);
+                0
+            }
+        };
+        let state_marker_2 = match reader.read_i32(self.offsets.judge_data + judge::STATE_MARKER_2)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("Failed to read state_marker_2: {}", e);
+                0
+            }
+        };
+        let song_select_marker = match reader.read_i32(
+            self.offsets
+                .play_settings
+                .wrapping_sub(settings::SONG_SELECT_MARKER),
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("Failed to read song_select_marker: {}", e);
+                0
+            }
+        };
+
+        debug!(
+            "State markers: marker1={}, marker2={}, song_select={} (judge_data=0x{:X}, play_settings=0x{:X})",
+            state_marker_1,
+            state_marker_2,
+            song_select_marker,
+            self.offsets.judge_data,
+            self.offsets.play_settings
+        );
 
         Ok(self
             .state_detector

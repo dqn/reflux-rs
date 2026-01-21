@@ -24,4 +24,9 @@ impl OffsetsCollection {
             && self.unlock_data != 0
             && self.current_song != 0
     }
+
+    /// Check if offsets required for state detection are valid
+    pub fn has_state_detection_offsets(&self) -> bool {
+        self.judge_data != 0 && self.play_settings != 0
+    }
 }

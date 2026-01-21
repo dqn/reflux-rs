@@ -238,4 +238,58 @@ mod tests {
         detector.reset();
         assert_eq!(detector.last_state(), GameState::Unknown);
     }
+
+    #[test]
+    fn test_only_marker1_nonzero_not_playing() {
+        let mut detector = GameStateDetector::new();
+        // Only marker1 non-zero should NOT be Playing (both required)
+        let state = detector.detect(1, 0, 0);
+        assert_eq!(state, GameState::Unknown);
+    }
+
+    #[test]
+    fn test_only_marker2_nonzero_not_playing() {
+        let mut detector = GameStateDetector::new();
+        // Only marker2 non-zero should NOT be Playing (both required)
+        let state = detector.detect(0, 1, 0);
+        assert_eq!(state, GameState::Unknown);
+    }
+
+    #[test]
+    fn test_all_zero_from_unknown() {
+        let mut detector = GameStateDetector::new();
+        // All markers zero from Unknown should stay Unknown
+        let state = detector.detect(0, 0, 0);
+        assert_eq!(state, GameState::Unknown);
+    }
+
+    #[test]
+    fn test_playing_to_result_to_song_select() {
+        let mut detector = GameStateDetector::new();
+        // Full cycle: Unknown -> Playing -> ResultScreen -> SongSelect
+        let state = detector.detect(1, 1, 0);
+        assert_eq!(state, GameState::Playing);
+
+        let state = detector.detect(0, 0, 0);
+        assert_eq!(state, GameState::ResultScreen);
+
+        let state = detector.detect(0, 0, 1);
+        assert_eq!(state, GameState::SongSelect);
+    }
+
+    #[test]
+    fn test_song_select_persists_with_partial_marker() {
+        let mut detector = GameStateDetector::new();
+        // Go to SongSelect
+        detector.detect(0, 0, 1);
+        assert_eq!(detector.last_state(), GameState::SongSelect);
+
+        // Partial marker (only marker1) should maintain SongSelect
+        let state = detector.detect(1, 0, 0);
+        assert_eq!(state, GameState::SongSelect);
+
+        // Both markers should transition to Playing
+        let state = detector.detect(1, 1, 0);
+        assert_eq!(state, GameState::Playing);
+    }
 }
