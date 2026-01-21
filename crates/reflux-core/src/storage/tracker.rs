@@ -6,6 +6,87 @@ use std::fs;
 use std::path::Path;
 use tracing::warn;
 
+/// Statistics for tracker file parsing
+#[derive(Debug, Default)]
+struct ParseStats {
+    total_lines: usize,
+    parsed_lines: usize,
+    skipped_lines: usize,
+    field_errors: usize,
+    logged_errors: usize,
+}
+
+impl ParseStats {
+    fn total_errors(&self) -> usize {
+        self.skipped_lines + self.field_errors
+    }
+}
+
+/// Error type for tracker line parsing
+#[derive(Debug)]
+enum TrackerParseError {
+    FieldCount,
+    SongId(String),
+    Difficulty(String),
+    Grade(String),
+    Lamp(String),
+    ExScore(String),
+}
+
+/// Parse a single tracker line into ChartKey and TrackerInfo
+fn parse_tracker_line(line: &str) -> std::result::Result<(ChartKey, TrackerInfo), TrackerParseError> {
+    let parts: Vec<&str> = line.split(',').collect();
+    if parts.len() < 6 {
+        return Err(TrackerParseError::FieldCount);
+    }
+
+    let song_id: u32 = parts[0]
+        .parse()
+        .map_err(|_| TrackerParseError::SongId(parts[0].to_string()))?;
+
+    let difficulty = parts[1]
+        .parse::<u8>()
+        .map_err(|_| TrackerParseError::Difficulty(parts[1].to_string()))
+        .and_then(|v| {
+            Difficulty::from_u8(v)
+                .ok_or_else(|| TrackerParseError::Difficulty(v.to_string()))
+        })?;
+
+    let grade = parts[2]
+        .parse::<u8>()
+        .map_err(|_| TrackerParseError::Grade(parts[2].to_string()))
+        .and_then(|v| {
+            Grade::from_u8(v).ok_or_else(|| TrackerParseError::Grade(v.to_string()))
+        })?;
+
+    let lamp = parts[3]
+        .parse::<u8>()
+        .map_err(|_| TrackerParseError::Lamp(parts[3].to_string()))
+        .and_then(|v| {
+            Lamp::from_u8(v).ok_or_else(|| TrackerParseError::Lamp(v.to_string()))
+        })?;
+
+    let ex_score: u32 = parts[4]
+        .parse()
+        .map_err(|_| TrackerParseError::ExScore(parts[4].to_string()))?;
+
+    let miss_count: Option<u32> = parts[5].parse().ok();
+
+    let key = ChartKey {
+        song_id,
+        difficulty,
+    };
+    let info = TrackerInfo {
+        grade,
+        lamp,
+        ex_score,
+        miss_count,
+        dj_points: 0.0,
+    };
+
+    Ok((key, info))
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TrackerInfo {
     pub grade: Grade,
@@ -60,161 +141,61 @@ impl Tracker {
 
         let content = fs::read_to_string(path)?;
         let mut tracker = Self::new();
-
-        // Error tracking for summary
-        let mut total_lines = 0usize;
-        let mut parsed_lines = 0usize;
-        let mut skipped_lines = 0usize;
-        let mut field_errors = 0usize;
-        let mut logged_errors = 0usize;
-
-        // Helper to log errors with limit
-        let mut log_error = |msg: String| {
-            if logged_errors < MAX_DETAILED_ERRORS {
-                warn!("{}", msg);
-                logged_errors += 1;
-            }
-        };
+        let mut stats = ParseStats::default();
 
         for (line_num, line) in content.lines().enumerate() {
-            total_lines += 1;
-            let parts: Vec<&str> = line.split(',').collect();
-            if parts.len() >= 6 {
-                // Track if this line has any field errors - if so, skip the entire line
-                // to avoid storing corrupted data with default values.
-                let mut line_has_error = false;
+            stats.total_lines += 1;
 
-                let song_id: u32 = match parts[0].parse() {
-                    Ok(v) => v,
-                    Err(_) => {
-                        log_error(format!(
-                            "tracker.txt line {}: failed to parse song_id '{}'",
-                            line_num + 1,
-                            parts[0]
-                        ));
-                        skipped_lines += 1;
-                        continue;
-                    }
-                };
-                let difficulty = match parts[1].parse::<u8>() {
-                    Ok(v) => match Difficulty::from_u8(v) {
-                        Some(d) => d,
-                        None => {
-                            log_error(format!(
-                                "tracker.txt line {}: invalid difficulty value {}",
-                                line_num + 1,
-                                v
-                            ));
-                            line_has_error = true;
-                            Difficulty::SpN // Temporary, will be skipped
-                        }
-                    },
-                    Err(_) => {
-                        log_error(format!(
-                            "tracker.txt line {}: failed to parse difficulty '{}'",
-                            line_num + 1,
-                            parts[1]
-                        ));
-                        skipped_lines += 1;
-                        continue;
-                    }
-                };
-                let grade = match parts[2].parse::<u8>() {
-                    Ok(v) => match Grade::from_u8(v) {
-                        Some(g) => g,
-                        None => {
-                            log_error(format!(
-                                "tracker.txt line {}: invalid grade value {}",
-                                line_num + 1,
-                                v
-                            ));
-                            line_has_error = true;
-                            Grade::NoPlay // Temporary, will be skipped
-                        }
-                    },
-                    Err(_) => {
-                        log_error(format!(
-                            "tracker.txt line {}: failed to parse grade '{}'",
-                            line_num + 1,
-                            parts[2]
-                        ));
-                        line_has_error = true;
-                        Grade::NoPlay // Temporary, will be skipped
-                    }
-                };
-                let lamp = match parts[3].parse::<u8>() {
-                    Ok(v) => match Lamp::from_u8(v) {
-                        Some(l) => l,
-                        None => {
-                            log_error(format!(
-                                "tracker.txt line {}: invalid lamp value {}",
-                                line_num + 1,
-                                v
-                            ));
-                            line_has_error = true;
-                            Lamp::NoPlay // Temporary, will be skipped
-                        }
-                    },
-                    Err(_) => {
-                        log_error(format!(
-                            "tracker.txt line {}: failed to parse lamp '{}'",
-                            line_num + 1,
-                            parts[3]
-                        ));
-                        line_has_error = true;
-                        Lamp::NoPlay // Temporary, will be skipped
-                    }
-                };
-                let ex_score: u32 = match parts[4].parse() {
-                    Ok(v) => v,
-                    Err(_) => {
-                        log_error(format!(
-                            "tracker.txt line {}: failed to parse ex_score '{}'",
-                            line_num + 1,
-                            parts[4]
-                        ));
-                        line_has_error = true;
-                        0 // Temporary, will be skipped
-                    }
-                };
-                let miss_count: Option<u32> = parts[5].parse().ok();
-
-                // Skip lines with field errors to avoid storing corrupted data
-                if line_has_error {
-                    field_errors += 1;
-                    skipped_lines += 1;
-                    continue;
+            match parse_tracker_line(line) {
+                Ok((key, info)) => {
+                    tracker.db.insert(key, info);
+                    stats.parsed_lines += 1;
                 }
+                Err(e) => {
+                    stats.skipped_lines += 1;
+                    if let TrackerParseError::FieldCount = e {
+                        // Lines with insufficient fields are silently skipped
+                        continue;
+                    }
 
-                let key = ChartKey {
-                    song_id,
-                    difficulty,
-                };
-                let info = TrackerInfo {
-                    grade,
-                    lamp,
-                    ex_score,
-                    miss_count,
-                    dj_points: 0.0,
-                };
-                tracker.db.insert(key, info);
-                parsed_lines += 1;
-            } else {
-                skipped_lines += 1;
+                    stats.field_errors += 1;
+                    if stats.logged_errors < MAX_DETAILED_ERRORS {
+                        let msg = match e {
+                            TrackerParseError::FieldCount => unreachable!(),
+                            TrackerParseError::SongId(v) => {
+                                format!("failed to parse song_id '{}'", v)
+                            }
+                            TrackerParseError::Difficulty(v) => {
+                                format!("invalid difficulty value '{}'", v)
+                            }
+                            TrackerParseError::Grade(v) => {
+                                format!("invalid grade value '{}'", v)
+                            }
+                            TrackerParseError::Lamp(v) => {
+                                format!("invalid lamp value '{}'", v)
+                            }
+                            TrackerParseError::ExScore(v) => {
+                                format!("failed to parse ex_score '{}'", v)
+                            }
+                        };
+                        warn!("tracker.txt line {}: {}", line_num + 1, msg);
+                        stats.logged_errors += 1;
+                    }
+                }
             }
         }
 
         // Report parse summary if there were any issues
-        let total_errors = skipped_lines + field_errors;
-        if total_errors > 0 {
+        if stats.total_errors() > 0 {
+            let hidden = stats.total_errors().saturating_sub(stats.logged_errors);
             warn!(
                 "Tracker load summary: {} total lines, {} parsed, {} skipped, {} field errors{}",
-                total_lines,
-                parsed_lines,
-                skipped_lines,
-                field_errors,
-                if total_errors > MAX_DETAILED_ERRORS {
-                    format!(" ({} errors not shown)", total_errors - logged_errors)
+                stats.total_lines,
+                stats.parsed_lines,
+                stats.skipped_lines,
+                stats.field_errors,
+                if hidden > 0 {
+                    format!(" ({} errors not shown)", hidden)
                 } else {
                     String::new()
                 }

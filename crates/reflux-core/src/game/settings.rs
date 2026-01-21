@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tracing::warn;
 
 use crate::game::PlayType;
 
@@ -35,7 +36,10 @@ impl Settings {
     pub const P2_OFFSET: u64 = 60;
     pub const WORD_SIZE: u64 = 4;
 
-    /// Build settings from raw memory values
+    /// Build settings from raw memory values.
+    ///
+    /// Invalid enum values are replaced with defaults and logged as warnings.
+    /// This can occur when memory contains unexpected values during state transitions.
     #[allow(clippy::too_many_arguments)] // Mapping raw memory layout requires many parameters
     pub fn from_raw_values(
         play_type: PlayType,
@@ -48,16 +52,41 @@ impl Settings {
         battle_val: i32,
         h_ran_val: i32,
     ) -> Self {
+        let style = style_val.try_into().unwrap_or_else(|_| {
+            warn!("Invalid style value: {}, using default", style_val);
+            Style::default()
+        });
+
+        let style2 = if play_type == PlayType::Dp {
+            Some(style2_val.try_into().unwrap_or_else(|_| {
+                warn!("Invalid style2 value: {}, using default", style2_val);
+                Style::default()
+            }))
+        } else {
+            None
+        };
+
+        let gauge = gauge_val.try_into().unwrap_or_else(|_| {
+            warn!("Invalid gauge value: {}, using default", gauge_val);
+            GaugeType::default()
+        });
+
+        let assist = assist_val.try_into().unwrap_or_else(|_| {
+            warn!("Invalid assist value: {}, using default", assist_val);
+            AssistType::default()
+        });
+
+        let range = range_val.try_into().unwrap_or_else(|_| {
+            warn!("Invalid range value: {}, using default", range_val);
+            RangeType::default()
+        });
+
         Self {
-            style: style_val.try_into().unwrap_or_default(),
-            style2: if play_type == PlayType::Dp {
-                Some(style2_val.try_into().unwrap_or_default())
-            } else {
-                None
-            },
-            gauge: gauge_val.try_into().unwrap_or_default(),
-            assist: assist_val.try_into().unwrap_or_default(),
-            range: range_val.try_into().unwrap_or_default(),
+            style,
+            style2,
+            gauge,
+            assist,
+            range,
             flip: flip_val == 1,
             battle: battle_val == 1,
             h_ran: h_ran_val == 1,

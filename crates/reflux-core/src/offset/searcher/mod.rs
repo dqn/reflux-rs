@@ -754,6 +754,10 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                             e
                         )));
                     }
+                    debug!(
+                        "Code scan stopped at offset {:#x} (scanned {:#x} bytes): {}",
+                        offset, scanned, e
+                    );
                     break;
                 }
             };

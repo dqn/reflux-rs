@@ -48,6 +48,15 @@ impl PlayData {
     }
 }
 
+// DJ Points calculation constants
+// Based on the official DJ Points formula from beatmania IIDX
+const DJ_POINTS_GRADE_A_BASE_BONUS: i32 = 10;
+const DJ_POINTS_GRADE_BONUS_PER_RANK: i32 = 5;
+const DJ_POINTS_LAMP_BONUS_PER_RANK: i32 = 5;
+const DJ_POINTS_LAMP_HARD_CLEAR_BONUS: i32 = 5;
+const DJ_POINTS_BASE_MULTIPLIER: i32 = 100;
+const DJ_POINTS_DIVISOR: f64 = 10000.0;
+
 /// Calculate DJ Points for a given score and lamp
 ///
 /// Formula:
@@ -58,8 +67,9 @@ pub fn calculate_dj_points(ex_score: u32, grade: Grade, lamp: Lamp) -> f64 {
     // Grade bonus: A=10, AA=15, AAA=20
     let grade_val = grade as i32;
     let grade_a_val = Grade::A as i32;
-    let c = if grade_val >= grade_a_val {
-        10 + (grade_val - grade_a_val).max(0) * 5
+    let grade_bonus = if grade_val >= grade_a_val {
+        DJ_POINTS_GRADE_A_BASE_BONUS
+            + (grade_val - grade_a_val).max(0) * DJ_POINTS_GRADE_BONUS_PER_RANK
     } else {
         0
     };
@@ -68,10 +78,16 @@ pub fn calculate_dj_points(ex_score: u32, grade: Grade, lamp: Lamp) -> f64 {
     let lamp_val = lamp as i32;
     let lamp_ac_val = Lamp::AssistClear as i32;
     let lamp_hc_val = Lamp::HardClear as i32;
-    let l = (lamp_val - lamp_ac_val).max(0) * 5 + if lamp_val >= lamp_hc_val { 5 } else { 0 };
+    let lamp_bonus = (lamp_val - lamp_ac_val).max(0) * DJ_POINTS_LAMP_BONUS_PER_RANK
+        + if lamp_val >= lamp_hc_val {
+            DJ_POINTS_LAMP_HARD_CLEAR_BONUS
+        } else {
+            0
+        };
 
     // DJ Points calculation
-    ex_score as f64 * (100 + c + l) as f64 / 10000.0
+    ex_score as f64 * (DJ_POINTS_BASE_MULTIPLIER + grade_bonus + lamp_bonus) as f64
+        / DJ_POINTS_DIVISOR
 }
 
 /// Calculate DJ Points from score and total notes

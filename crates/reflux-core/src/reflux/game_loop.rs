@@ -8,6 +8,22 @@ use std::time::Duration;
 use chrono::Utc;
 use tracing::{debug, error, info, warn};
 
+// =============================================================================
+// Retry and polling configuration
+// =============================================================================
+
+/// Memory read retry settings.
+/// Exponential backoff: 50ms → 100ms → 200ms = total 350ms max.
+/// Handles transient read failures while keeping latency acceptable.
+const MAX_READ_RETRIES: u32 = 3;
+const RETRY_DELAYS_MS: [u64; 3] = [50, 100, 200];
+
+/// Result screen polling settings.
+/// 100ms × 50 = 5 seconds max wait for play data to become available.
+/// INFINITAS needs time to finalize data after screen transition.
+const MAX_POLL_ATTEMPTS: u32 = 50;
+const POLL_INTERVAL_MS: u64 = 100;
+
 use crate::error::Result;
 use crate::game::{
     AssistType, ChartInfo, Difficulty, GameState, Grade, Judge, Lamp, PlayData, PlayType,
@@ -33,12 +49,6 @@ impl Reflux {
             Ok(path) => info!("Started TSV session at {:?}", path),
             Err(e) => warn!("Failed to start TSV session: {}", e),
         }
-
-        // Retry configuration for memory reads.
-        // These values provide exponential backoff (50ms, 100ms, 200ms) to handle
-        // transient read failures while keeping total retry time under 400ms.
-        const MAX_READ_RETRIES: u32 = 3;
-        const RETRY_DELAYS_MS: [u64; 3] = [50, 100, 200];
 
         loop {
             // Check if process is still alive with retry mechanism (exponential backoff)
@@ -126,9 +136,6 @@ impl Reflux {
 
     /// Handle transition to result screen
     fn handle_result_screen(&mut self, reader: &MemoryReader) {
-        const MAX_POLL_ATTEMPTS: u32 = 50;
-        const POLL_INTERVAL_MS: u64 = 100;
-
         // Poll until play data becomes available (max 5 seconds)
         for attempt in 0..MAX_POLL_ATTEMPTS {
             thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
