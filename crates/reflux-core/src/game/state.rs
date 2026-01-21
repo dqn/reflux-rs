@@ -79,12 +79,14 @@ impl GameStateDetector {
     fn detect_raw(
         &self,
         judge_marker_54: i32,
-        judge_marker_55: i32,
+        _judge_marker_55: i32,
         song_select_marker: i32,
         last_state: GameState,
     ) -> GameState {
-        // Check if playing (both markers must be non-zero)
-        if judge_marker_54 != 0 && judge_marker_55 != 0 {
+        // Check if playing (marker1 must be non-zero)
+        // Note: marker2 check removed as it may be at a different offset
+        // in newer game versions (confirmed marker1=1, marker2=0 during play)
+        if judge_marker_54 != 0 {
             return GameState::Playing;
         }
 
@@ -240,11 +242,11 @@ mod tests {
     }
 
     #[test]
-    fn test_only_marker1_nonzero_not_playing() {
+    fn test_only_marker1_nonzero_is_playing() {
         let mut detector = GameStateDetector::new();
-        // Only marker1 non-zero should NOT be Playing (both required)
+        // Only marker1 non-zero IS Playing (marker2 check removed for newer game versions)
         let state = detector.detect(1, 0, 0);
-        assert_eq!(state, GameState::Unknown);
+        assert_eq!(state, GameState::Playing);
     }
 
     #[test]
@@ -278,18 +280,14 @@ mod tests {
     }
 
     #[test]
-    fn test_song_select_persists_with_partial_marker() {
+    fn test_song_select_to_playing_with_marker1_only() {
         let mut detector = GameStateDetector::new();
         // Go to SongSelect
         detector.detect(0, 0, 1);
         assert_eq!(detector.last_state(), GameState::SongSelect);
 
-        // Partial marker (only marker1) should maintain SongSelect
+        // marker1 only should transition to Playing (marker2 check removed)
         let state = detector.detect(1, 0, 0);
-        assert_eq!(state, GameState::SongSelect);
-
-        // Both markers should transition to Playing
-        let state = detector.detect(1, 1, 0);
         assert_eq!(state, GameState::Playing);
     }
 }
