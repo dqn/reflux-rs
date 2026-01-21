@@ -1,4 +1,4 @@
-# Reflux-RS
+# reflux-rs
 
 beatmania IIDX INFINITAS のスコアトラッカー。本家 [Reflux](https://github.com/olji/Reflux) (C#) の Rust 移植版。
 
@@ -22,17 +22,17 @@ cargo run            # CLI 実行（Windows のみ動作）
 
 ### reflux-core モジュール構成
 
-| モジュール | 役割 |
-|-----------|------|
-| `game/` | ゲームデータ構造（PlayData, Judge, Settings, etc.） |
-| `memory/` | Windows プロセスメモリ読み取り |
-| `network/` | リモートサーバー API、Kamaitachi 連携 |
+| モジュール | 役割                                                         |
+| ---------- | ------------------------------------------------------------ |
+| `game/`    | ゲームデータ構造（PlayData, Judge, Settings, etc.）          |
+| `memory/`  | Windows プロセスメモリ読み取り                               |
+| `network/` | リモートサーバー API、Kamaitachi 連携                        |
 | `storage/` | ローカルファイル保存（Tracker, Session, UnlockDb, ScoreMap） |
-| `stream/` | OBS 向けファイル出力 |
-| `offset/` | メモリオフセット検索・管理 |
-| `config/` | INI 設定ファイルパース |
-| `reflux/` | メインアプリケーションロジック |
-| `error.rs` | エラー型定義 |
+| `stream/`  | OBS 向けファイル出力                                         |
+| `offset/`  | メモリオフセット検索・管理                                   |
+| `config/`  | INI 設定ファイルパース                                       |
+| `reflux/`  | メインアプリケーションロジック                               |
+| `error.rs` | エラー型定義                                                 |
 
 ### 主要な型
 
