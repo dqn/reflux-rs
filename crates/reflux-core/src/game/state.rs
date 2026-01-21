@@ -1,20 +1,6 @@
-use tracing::warn;
-
 use crate::game::GameState;
 
 /// Game state detector
-///
-/// ## State Transition Rules
-///
-/// Valid transitions:
-/// - Unknown -> SongSelect | Playing (initial detection)
-/// - SongSelect -> Playing (song start)
-/// - Playing -> ResultScreen (song end)
-/// - ResultScreen -> SongSelect (back to select)
-///
-/// Invalid transitions (blocked):
-/// - SongSelect -> ResultScreen (must go through Playing)
-/// - ResultScreen -> Playing (must go through SongSelect)
 pub struct GameStateDetector {
     last_state: GameState,
 }
@@ -24,23 +10,6 @@ impl GameStateDetector {
         Self {
             last_state: GameState::Unknown,
         }
-    }
-
-    /// Check if a state transition is valid
-    pub fn is_valid_transition(from: GameState, to: GameState) -> bool {
-        if from == to {
-            return true;
-        }
-
-        matches!(
-            (from, to),
-            // From Unknown, any state is valid (initial detection)
-            (GameState::Unknown, _)
-            // Normal flow
-            | (GameState::SongSelect, GameState::Playing)
-            | (GameState::Playing, GameState::ResultScreen)
-            | (GameState::ResultScreen, GameState::SongSelect)
-        )
     }
 
     /// Determine game state from memory values
@@ -61,15 +30,6 @@ impl GameStateDetector {
             song_select_marker,
             self.last_state,
         );
-
-        // Validate state transition
-        if !Self::is_valid_transition(self.last_state, detected_state) {
-            warn!(
-                "Invalid state transition detected: {:?} -> {:?}, keeping {:?}",
-                self.last_state, detected_state, self.last_state
-            );
-            return self.last_state;
-        }
 
         self.last_state = detected_state;
         detected_state
@@ -128,58 +88,6 @@ impl Default for GameStateDetector {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_valid_transitions() {
-        // From Unknown, any state is valid
-        assert!(GameStateDetector::is_valid_transition(
-            GameState::Unknown,
-            GameState::SongSelect
-        ));
-        assert!(GameStateDetector::is_valid_transition(
-            GameState::Unknown,
-            GameState::Playing
-        ));
-        assert!(GameStateDetector::is_valid_transition(
-            GameState::Unknown,
-            GameState::ResultScreen
-        ));
-
-        // Normal flow
-        assert!(GameStateDetector::is_valid_transition(
-            GameState::SongSelect,
-            GameState::Playing
-        ));
-        assert!(GameStateDetector::is_valid_transition(
-            GameState::Playing,
-            GameState::ResultScreen
-        ));
-        assert!(GameStateDetector::is_valid_transition(
-            GameState::ResultScreen,
-            GameState::SongSelect
-        ));
-
-        // Same state is always valid
-        assert!(GameStateDetector::is_valid_transition(
-            GameState::SongSelect,
-            GameState::SongSelect
-        ));
-    }
-
-    #[test]
-    fn test_invalid_transitions() {
-        // Cannot skip Playing
-        assert!(!GameStateDetector::is_valid_transition(
-            GameState::SongSelect,
-            GameState::ResultScreen
-        ));
-
-        // Cannot go back to Playing from ResultScreen
-        assert!(!GameStateDetector::is_valid_transition(
-            GameState::ResultScreen,
-            GameState::Playing
-        ));
-    }
 
     #[test]
     fn test_detect_playing() {
