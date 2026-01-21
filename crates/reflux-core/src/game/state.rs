@@ -98,6 +98,12 @@ impl GameStateDetector {
             return GameState::ResultScreen;
         }
 
+        // SongSelect から遷移中は SongSelect を維持（C# 実装と同等）
+        // "Cannot go from song select to result screen anyway"
+        if last_state == GameState::SongSelect {
+            return GameState::SongSelect;
+        }
+
         GameState::Unknown
     }
 
@@ -207,16 +213,20 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_transition_blocked() {
+    fn test_song_select_intermediate_state() {
         let mut detector = GameStateDetector::new();
         // Go to SongSelect
         detector.detect(0, 0, 1);
         assert_eq!(detector.last_state(), GameState::SongSelect);
 
-        // Try to go to ResultScreen directly (invalid)
+        // Intermediate state during transition (both markers = 0)
+        // Should stay in SongSelect without warning
         let state = detector.detect(0, 0, 0);
-        // Should stay at SongSelect
         assert_eq!(state, GameState::SongSelect);
+
+        // Then transition to Playing
+        let state = detector.detect(1, 1, 0);
+        assert_eq!(state, GameState::Playing);
     }
 
     #[test]
