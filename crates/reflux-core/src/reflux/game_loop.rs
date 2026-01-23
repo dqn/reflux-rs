@@ -159,6 +159,10 @@ impl Reflux {
 
     /// Handle transition to result screen
     fn handle_result_screen(&mut self, reader: &MemoryReader) {
+        // Initial delay to allow game data to settle (matching C# implementation)
+        // This prevents race conditions where judge data updates before play data
+        thread::sleep(Duration::from_millis(1000));
+
         // Poll until play data becomes available (exponential backoff)
         for (attempt, &delay) in POLL_DELAYS_MS.iter().enumerate() {
             thread::sleep(Duration::from_millis(delay));
@@ -309,7 +313,8 @@ impl Reflux {
             Grade::NoPlay
         };
 
-        let gauge = self.read_gauge(reader);
+        // Read gauge based on play type to avoid garbage data from unused side
+        let gauge = self.read_gauge(reader, judge.play_type);
 
         Ok(PlayData {
             timestamp: Utc::now(),
@@ -344,15 +349,22 @@ impl Reflux {
         }
     }
 
-    /// Read gauge value from memory (P1 + P2 combined)
-    fn read_gauge(&self, reader: &MemoryReader) -> u8 {
-        let gauge_p1 = reader
-            .read_i32(self.offsets.judge_data + judge::P1_GAUGE)
-            .unwrap_or(0);
-        let gauge_p2 = reader
-            .read_i32(self.offsets.judge_data + judge::P2_GAUGE)
-            .unwrap_or(0);
-        (gauge_p1 + gauge_p2) as u8
+    /// Read gauge value from memory based on play type
+    fn read_gauge(&self, reader: &MemoryReader, play_type: PlayType) -> u8 {
+        match play_type {
+            PlayType::P1 | PlayType::Dp => {
+                // For P1 and DP, use P1 gauge (DP has same value on both sides)
+                reader
+                    .read_i32(self.offsets.judge_data + judge::P1_GAUGE)
+                    .unwrap_or(0) as u8
+            }
+            PlayType::P2 => {
+                // For P2, use P2 gauge
+                reader
+                    .read_i32(self.offsets.judge_data + judge::P2_GAUGE)
+                    .unwrap_or(0) as u8
+            }
+        }
     }
 
     fn fetch_judge_data(&self, reader: &MemoryReader) -> Result<Judge> {
