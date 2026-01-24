@@ -316,8 +316,8 @@ impl Reflux {
             Grade::NoPlay
         };
 
-        // Read gauge based on play type to avoid garbage data from unused side
-        let gauge = self.read_gauge(reader, judge.play_type);
+        // Read gauge (sum of P1 and P2, following C# implementation)
+        let gauge = self.read_gauge(reader);
 
         Ok(PlayData {
             timestamp: Utc::now(),
@@ -352,27 +352,22 @@ impl Reflux {
         }
     }
 
-    /// Read gauge value from memory based on play type
-    fn read_gauge(&self, reader: &MemoryReader, play_type: PlayType) -> u8 {
+    /// Read gauge value from memory
+    ///
+    /// Gauge values are stored separately for P1 and P2 sides.
+    /// In SP mode, only one side has a value (other is 0).
+    /// Following C# implementation, we sum both values.
+    fn read_gauge(&self, reader: &MemoryReader) -> u8 {
         let p1_raw = reader
             .read_i32(self.offsets.judge_data + judge::P1_GAUGE)
-            .unwrap_or(-999);
+            .unwrap_or(0);
         let p2_raw = reader
             .read_i32(self.offsets.judge_data + judge::P2_GAUGE)
-            .unwrap_or(-999);
+            .unwrap_or(0);
 
-        debug!(
-            "Gauge debug: play_type={:?}, P1_raw={}, P2_raw={}, sum={}",
-            play_type,
-            p1_raw,
-            p2_raw,
-            p1_raw + p2_raw
-        );
-
-        let raw_value = match play_type {
-            PlayType::P1 | PlayType::Dp => p1_raw,
-            PlayType::P2 => p2_raw,
-        };
+        // Sum P1 and P2 gauge values (C# implementation behavior)
+        // In SP mode, one side is 0, so this effectively returns the active side's value
+        let raw_value = p1_raw + p2_raw;
         // Clamp to valid range (0-100%)
         raw_value.clamp(0, 100) as u8
     }
