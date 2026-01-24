@@ -354,19 +354,24 @@ impl Reflux {
 
     /// Read gauge value from memory based on play type
     fn read_gauge(&self, reader: &MemoryReader, play_type: PlayType) -> u8 {
+        let p1_raw = reader
+            .read_i32(self.offsets.judge_data + judge::P1_GAUGE)
+            .unwrap_or(-999);
+        let p2_raw = reader
+            .read_i32(self.offsets.judge_data + judge::P2_GAUGE)
+            .unwrap_or(-999);
+
+        debug!(
+            "Gauge debug: play_type={:?}, P1_raw={}, P2_raw={}, sum={}",
+            play_type,
+            p1_raw,
+            p2_raw,
+            p1_raw + p2_raw
+        );
+
         let raw_value = match play_type {
-            PlayType::P1 | PlayType::Dp => {
-                // For P1 and DP, use P1 gauge (DP has same value on both sides)
-                reader
-                    .read_i32(self.offsets.judge_data + judge::P1_GAUGE)
-                    .unwrap_or(0)
-            }
-            PlayType::P2 => {
-                // For P2, use P2 gauge
-                reader
-                    .read_i32(self.offsets.judge_data + judge::P2_GAUGE)
-                    .unwrap_or(0)
-            }
+            PlayType::P1 | PlayType::Dp => p1_raw,
+            PlayType::P2 => p2_raw,
         };
         // Clamp to valid range (0-100%)
         raw_value.clamp(0, 100) as u8
