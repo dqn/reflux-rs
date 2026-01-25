@@ -55,7 +55,8 @@ fn load_song_database_with_retry(
     reader: &MemoryReader,
     song_list: u64,
     encoding_fixes: Option<&EncodingFixes>,
-) -> Result<HashMap<u32, SongInfo>> {
+    running: &AtomicBool,
+) -> Result<Option<HashMap<u32, SongInfo>>> {
     const RETRY_DELAY_MS: u64 = 5000;
     const EXTRA_DELAY_MS: u64 = 1000;
     const MAX_ATTEMPTS: u32 = 12;
@@ -63,6 +64,11 @@ fn load_song_database_with_retry(
     let mut attempts = 0u32;
     let mut last_error: Option<String> = None;
     loop {
+        // Check for shutdown signal
+        if !running.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
+
         if attempts >= MAX_ATTEMPTS {
             bail!(
                 "Failed to load song database after {} attempts: {}",
@@ -75,10 +81,15 @@ fn load_song_database_with_retry(
         // Wait for data initialization
         thread::sleep(Duration::from_millis(EXTRA_DELAY_MS));
 
+        // Check for shutdown signal after sleep
+        if !running.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
+
         match fetch_song_database_with_fixes(reader, song_list, encoding_fixes) {
             Ok(db) => {
                 match validate_song_database(&db) {
-                    ValidationResult::Valid => return Ok(db),
+                    ValidationResult::Valid => return Ok(Some(db)),
                     ValidationResult::TooFewSongs(count) => {
                         last_error = Some(format!("song list too small ({})", count));
                         warn!(
@@ -108,7 +119,7 @@ fn load_song_database_with_retry(
                             "Song {} not found in song list, accepting current list",
                             READY_SONG_ID
                         );
-                        return Ok(db);
+                        return Ok(Some(db));
                     }
                 }
                 thread::sleep(Duration::from_millis(RETRY_DELAY_MS));
@@ -131,13 +142,24 @@ fn load_song_database_with_retry(
 fn search_offsets_with_retry(
     reader: &MemoryReader,
     game_version: Option<&String>,
-) -> Result<OffsetsCollection> {
+    running: &AtomicBool,
+) -> Result<Option<OffsetsCollection>> {
     const RETRY_DELAY_MS: u64 = 5000;
 
     let signatures = builtin_signatures();
 
     loop {
+        // Check for shutdown signal before sleeping
+        if !running.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
+
         thread::sleep(Duration::from_millis(RETRY_DELAY_MS));
+
+        // Check for shutdown signal after sleeping
+        if !running.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
 
         let mut searcher = OffsetSearcher::new(reader);
 
@@ -148,7 +170,7 @@ fn search_offsets_with_retry(
                 }
 
                 if searcher.validate_signature_offsets(&offsets) {
-                    return Ok(offsets);
+                    return Ok(Some(offsets));
                 }
 
                 warn!(
@@ -228,7 +250,12 @@ fn main() -> Result<()> {
                 if !reflux.offsets().is_valid() {
                     info!("Invalid offsets detected. Attempting signature search...");
 
-                    let offsets = search_offsets_with_retry(&reader, game_version.as_ref())?;
+                    let offsets =
+                        search_offsets_with_retry(&reader, game_version.as_ref(), &running)?;
+                    let Some(offsets) = offsets else {
+                        // Shutdown requested during offset search
+                        break;
+                    };
 
                     debug!("Signature-based offset detection successful!");
                     reflux.update_offsets(offsets);
@@ -256,7 +283,12 @@ fn main() -> Result<()> {
                     &reader,
                     reflux.offsets().song_list,
                     encoding_fixes.as_ref(),
+                    &running,
                 )?;
+                let Some(song_db) = song_db else {
+                    // Shutdown requested during song database loading
+                    break;
+                };
                 debug!("Loaded {} songs", song_db.len());
                 reflux.set_song_db(song_db.clone());
 
@@ -322,7 +354,7 @@ fn main() -> Result<()> {
                 println!("Ready to track. Waiting for plays...");
 
                 // Run tracker loop
-                if let Err(e) = reflux.run(&process) {
+                if let Err(e) = reflux.run(&process, &running) {
                     error!("Tracker error: {}", e);
                 }
 

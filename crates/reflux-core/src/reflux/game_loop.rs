@@ -2,6 +2,7 @@
 //!
 //! This module contains the main tracking loop and game state handling methods.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -37,7 +38,9 @@ use super::Reflux;
 
 impl Reflux {
     /// Run the main tracking loop
-    pub fn run(&mut self, process: &ProcessHandle) -> Result<()> {
+    ///
+    /// The `running` flag is checked each iteration to allow graceful shutdown via Ctrl+C.
+    pub fn run(&mut self, process: &ProcessHandle, running: &AtomicBool) -> Result<()> {
         let reader = MemoryReader::new(process);
         let mut last_state = GameState::Unknown;
 
@@ -51,6 +54,12 @@ impl Reflux {
         }
 
         loop {
+            // Check for shutdown signal
+            if !running.load(Ordering::SeqCst) {
+                debug!("Shutdown signal received, exiting tracker loop");
+                break;
+            }
+
             // Check if process is still alive with retry mechanism (exponential backoff)
             let mut process_alive = false;
             for attempt in 0..MAX_READ_RETRIES {
