@@ -128,15 +128,6 @@ impl Reflux {
             }
         };
 
-        debug!(
-            "State markers: marker1={}, marker2={}, song_select={} (judge_data=0x{:X}, play_settings=0x{:X})",
-            state_marker_1,
-            state_marker_2,
-            song_select_marker,
-            self.offsets.judge_data,
-            self.offsets.play_settings
-        );
-
         Ok(self
             .state_detector
             .detect(state_marker_1, state_marker_2, song_select_marker))
@@ -360,10 +351,12 @@ impl Reflux {
     fn read_gauge(&self, reader: &MemoryReader) -> u8 {
         let p1_raw = reader
             .read_i32(self.offsets.judge_data + judge::P1_GAUGE)
-            .unwrap_or(0);
+            .unwrap_or(-999);
         let p2_raw = reader
             .read_i32(self.offsets.judge_data + judge::P2_GAUGE)
-            .unwrap_or(0);
+            .unwrap_or(-999);
+
+        info!("Gauge raw: P1={}, P2={}, sum={}", p1_raw, p2_raw, p1_raw + p2_raw);
 
         // Sum P1 and P2 gauge values (C# implementation behavior)
         // In SP mode, one side is 0, so this effectively returns the active side's value
