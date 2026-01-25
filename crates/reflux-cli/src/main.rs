@@ -195,11 +195,6 @@ fn main() -> Result<()> {
     // Create Reflux instance
     let mut reflux = Reflux::new(OffsetsCollection::default());
 
-    // Load tracker
-    if let Err(e) = reflux.load_tracker("tracker.db") {
-        warn!("Failed to load tracker: {}", e);
-    }
-
     // Main loop: wait for process (exits on Ctrl+C)
     debug!("Waiting for INFINITAS process...");
     while running.load(Ordering::SeqCst) {
@@ -319,10 +314,7 @@ fn main() -> Result<()> {
                     }
                 }
 
-                // Load unlock database
-                if let Err(e) = reflux.load_unlock_db("unlockdb") {
-                    warn!("Failed to load unlock db: {}", e);
-                }
+                // Load unlock state from memory
                 if let Err(e) = reflux.load_unlock_state(&reader) {
                     warn!("Failed to load unlock state: {}", e);
                 }
@@ -330,16 +322,6 @@ fn main() -> Result<()> {
                 // Run tracker loop
                 if let Err(e) = reflux.run(&process) {
                     error!("Tracker error: {}", e);
-                }
-
-                // Save unlock database on disconnect
-                if let Err(e) = reflux.save_unlock_db("unlockdb") {
-                    error!("Failed to save unlock db: {}", e);
-                }
-
-                // Save tracker on disconnect
-                if let Err(e) = reflux.save_tracker("tracker.db") {
-                    error!("Failed to save tracker: {}", e);
                 }
 
                 // Export tracker.tsv on disconnect

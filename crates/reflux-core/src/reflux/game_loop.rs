@@ -31,7 +31,7 @@ use crate::game::{
 };
 use crate::memory::layout::{judge, play, settings, timing};
 use crate::memory::{MemoryReader, ProcessHandle, ReadMemory};
-use crate::storage::{ChartKey, TrackerInfo, format_play_data_console};
+use crate::storage::format_play_data_console;
 
 use super::Reflux;
 
@@ -196,9 +196,6 @@ impl Reflux {
         // Print detailed play data to console
         println!("{}", format_play_data_console(play_data));
 
-        // Update tracker
-        self.update_tracker(play_data);
-
         // Save to session files
         self.save_session_data(play_data);
     }
@@ -248,11 +245,6 @@ impl Reflux {
 
         if !changes.is_empty() {
             debug!("Detected {} unlock state changes", changes.len());
-
-            // Update local state
-            for (&song_id, unlock_data) in &changes {
-                self.unlock_db.update_from_data(song_id, unlock_data);
-            }
         }
 
         // Update current unlock state
@@ -403,31 +395,6 @@ impl Reflux {
             play_type, style_val, style2_val, assist_val, range_val, flip_val, battle_val,
             h_ran_val,
         ))
-    }
-
-    fn update_tracker(&mut self, play_data: &PlayData) {
-        let key = ChartKey {
-            song_id: play_data.chart.song_id,
-            difficulty: play_data.chart.difficulty,
-        };
-
-        let new_info = TrackerInfo {
-            grade: play_data.grade,
-            lamp: play_data.lamp,
-            ex_score: play_data.ex_score,
-            miss_count: if play_data.miss_count_valid() {
-                Some(play_data.miss_count())
-            } else {
-                None
-            },
-            dj_points: crate::game::calculate_dj_points(
-                play_data.ex_score,
-                play_data.grade,
-                play_data.lamp,
-            ),
-        };
-
-        self.tracker.update(key, new_info);
     }
 
     /// Load current unlock state from memory

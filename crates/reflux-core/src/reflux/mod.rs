@@ -8,7 +8,7 @@ use tracing::{debug, warn};
 use crate::error::Result;
 use crate::game::{GameStateDetector, SongInfo, UnlockData};
 use crate::offset::OffsetsCollection;
-use crate::storage::{ScoreMap, SessionManager, Tracker, UnlockDb};
+use crate::storage::{ScoreMap, SessionManager};
 use crate::stream::StreamOutput;
 
 /// Game data loaded from memory and files
@@ -39,14 +39,11 @@ pub struct Reflux {
     pub(crate) offsets: OffsetsCollection,
     /// Game data from memory
     pub(crate) game_data: GameData,
-    pub(crate) tracker: Tracker,
     pub(crate) state_detector: GameStateDetector,
     pub(crate) session_manager: SessionManager,
     /// Stream output for OBS integration (not yet implemented)
     #[allow(dead_code)]
     pub(crate) stream_output: StreamOutput,
-    /// Persistent unlock state storage (from file)
-    pub(crate) unlock_db: UnlockDb,
 }
 
 impl Reflux {
@@ -69,11 +66,9 @@ impl Reflux {
         Self {
             offsets,
             game_data: GameData::new(),
-            tracker: Tracker::new(),
             state_detector: GameStateDetector::new(),
             session_manager: SessionManager::new("sessions"),
             stream_output,
-            unlock_db: UnlockDb::new(),
         }
     }
 
@@ -87,61 +82,9 @@ impl Reflux {
         self.game_data.custom_types = custom_types;
     }
 
-    /// Load tracker data from file
-    pub fn load_tracker<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        match Tracker::load(&path) {
-            Ok(tracker) => {
-                self.tracker = tracker;
-                debug!("Loaded tracker from {:?}", path.as_ref());
-            }
-            Err(e) => {
-                if e.is_not_found() {
-                    debug!("Tracker file not found, starting fresh");
-                } else {
-                    warn!("Failed to load tracker: {}, starting fresh", e);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Save tracker data to file
-    pub fn save_tracker<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        self.tracker.save(path)?;
-        Ok(())
-    }
-
     /// Set song database
     pub fn set_song_db(&mut self, song_db: HashMap<u32, SongInfo>) {
         self.game_data.song_db = song_db;
-    }
-
-    /// Load unlock database from file
-    pub fn load_unlock_db<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        match UnlockDb::load(&path) {
-            Ok(db) => {
-                debug!(
-                    "Loaded unlock db from {:?} ({} entries)",
-                    path.as_ref(),
-                    db.len()
-                );
-                self.unlock_db = db;
-            }
-            Err(e) => {
-                if e.is_not_found() {
-                    debug!("Unlock db file not found, starting fresh");
-                } else {
-                    warn!("Failed to load unlock db: {}, starting fresh", e);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Save unlock database to file
-    pub fn save_unlock_db<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        self.unlock_db.save(path)?;
-        Ok(())
     }
 
     /// Get a reference to the offsets
@@ -172,7 +115,6 @@ impl Reflux {
     pub fn export_tracker_tsv<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         crate::storage::export_tracker_tsv(
             path,
-            &self.tracker,
             &self.game_data.song_db,
             &self.game_data.unlock_state,
             &self.game_data.score_map,

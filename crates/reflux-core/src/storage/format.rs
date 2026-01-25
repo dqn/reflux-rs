@@ -10,7 +10,7 @@ use crate::game::{
     Difficulty, Grade, Lamp, PlayData, SongInfo, UnlockData, UnlockType, calculate_dj_points,
     get_unlock_state_for_difficulty,
 };
-use crate::storage::{ScoreMap, Tracker};
+use crate::storage::ScoreMap;
 
 pub fn format_tsv_header() -> String {
     [
@@ -245,7 +245,6 @@ pub fn format_tracker_tsv_header() -> String {
 /// Export detailed tracker data to TSV
 pub fn export_tracker_tsv<P: AsRef<Path>>(
     path: P,
-    _tracker: &Tracker,
     song_db: &HashMap<u32, SongInfo>,
     unlock_db: &HashMap<u32, UnlockData>,
     score_map: &ScoreMap,
