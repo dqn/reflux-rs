@@ -151,7 +151,7 @@ pub fn builtin_signatures() -> OffsetSignatureSet {
                     disp_offset: 3,
                     instr_len: 7,
                     deref: false,
-                    addend: 0,
+                    addend: 0xC00,
                 }],
             },
             OffsetSignatureEntry {
