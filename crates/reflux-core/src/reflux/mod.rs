@@ -3,7 +3,7 @@ mod game_loop;
 use std::collections::HashMap;
 use std::path::Path;
 
-use tracing::{debug, warn};
+use tracing::{debug, info};
 
 use crate::error::Result;
 use crate::game::{GameStateDetector, SongInfo, UnlockData};
@@ -57,7 +57,7 @@ impl Reflux {
                 offsets.judge_data, offsets.play_settings
             );
         } else {
-            warn!(
+            info!(
                 "State detection offsets not fully initialized: judge_data=0x{:X}, play_settings=0x{:X}",
                 offsets.judge_data, offsets.play_settings
             );

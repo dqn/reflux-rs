@@ -226,7 +226,7 @@ fn main() -> Result<()> {
 
                 // Check if offsets are valid before proceeding
                 if !reflux.offsets().is_valid() {
-                    warn!("Invalid offsets detected. Attempting signature search...");
+                    info!("Invalid offsets detected. Attempting signature search...");
 
                     let offsets = search_offsets_with_retry(&reader, game_version.as_ref())?;
 
@@ -318,6 +318,8 @@ fn main() -> Result<()> {
                 if let Err(e) = reflux.load_unlock_state(&reader) {
                     warn!("Failed to load unlock state: {}", e);
                 }
+
+                println!("Ready to track. Waiting for plays...");
 
                 // Run tracker loop
                 if let Err(e) = reflux.run(&process) {
