@@ -48,7 +48,6 @@ pub fn format_full_tsv_header() -> String {
         "grade",
         "lamp",
         "misscount",
-        "gaugepercent",
         "exscore",
         "pgreat",
         "great",
@@ -60,7 +59,6 @@ pub fn format_full_tsv_header() -> String {
         "slow",
         "style",
         "style2",
-        "gauge",
         "assist",
         "range",
         "date",
@@ -88,7 +86,6 @@ pub fn format_full_tsv_row(play_data: &PlayData) -> String {
         } else {
             "-".to_string()
         },
-        play_data.gauge.to_string(),
         play_data.ex_score.to_string(),
         play_data.judge.pgreat.to_string(),
         play_data.judge.great.to_string(),
@@ -105,7 +102,6 @@ pub fn format_full_tsv_row(play_data: &PlayData) -> String {
             .map(|s| s.as_str())
             .unwrap_or("OFF")
             .to_string(),
-        play_data.settings.gauge.as_str().to_string(),
         play_data.settings.assist.as_str().to_string(),
         play_data.settings.range.as_str().to_string(),
         play_data.timestamp.to_rfc3339(),
@@ -140,8 +136,7 @@ pub fn format_json_entry(play_data: &PlayData) -> JsonValue {
         "hitMeta": {
             "fast": play_data.judge.fast,
             "slow": play_data.judge.slow,
-            "comboBreak": play_data.judge.combo_break,
-            "gauge": play_data.gauge
+            "comboBreak": play_data.judge.combo_break
         }
     });
 
@@ -465,13 +460,11 @@ pub fn format_play_data_console(play_data: &PlayData) -> String {
         ("Fast", play_data.judge.fast.to_string()),
         ("Slow", play_data.judge.slow.to_string()),
         ("ComboBreak", play_data.judge.combo_break.to_string()),
-        ("Gauge", format!("{}%", play_data.gauge)),
         (
             "PlayType",
             play_data.judge.play_type.short_name().to_string(),
         ),
         ("Style", play_data.settings.style.as_str().to_string()),
-        ("Gauge Type", play_data.settings.gauge.as_str().to_string()),
     ];
 
     for (key, value) in pairs {

@@ -391,15 +391,48 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         &mut self,
         base_hint: u64,
         style: i32,
-        gauge: i32,
         assist: i32,
         range: i32,
     ) -> Result<u64> {
         self.load_buffer_around(base_hint, INITIAL_SEARCH_SIZE)?;
 
-        // Pattern: style, gauge, assist, 0, range
-        let pattern = merge_byte_representations(&[style, gauge, assist, 0, range]);
-        self.fetch_and_search(base_hint, &pattern, 0, None)
+        // Pattern: style, (skip gauge), assist, 0, range
+        // We search for style, then verify assist and range at expected offsets
+        let pattern = merge_byte_representations(&[style]);
+        let mut search_size = INITIAL_SEARCH_SIZE;
+
+        while search_size <= MAX_SEARCH_SIZE {
+            self.load_buffer_around(base_hint, search_size)?;
+
+            for (pos, window) in self.buffer.windows(pattern.len()).enumerate() {
+                if *window != pattern {
+                    continue;
+                }
+
+                let candidate_addr = self.buffer_base + pos as u64;
+
+                // Verify assist at offset 8 (word * 2) and range at offset 16 (word * 4)
+                let assist_at = self
+                    .reader
+                    .read_i32(candidate_addr + 8)
+                    .unwrap_or(-1);
+                let range_at = self
+                    .reader
+                    .read_i32(candidate_addr + 16)
+                    .unwrap_or(-1);
+
+                if assist_at == assist && range_at == range {
+                    return Ok(candidate_addr);
+                }
+            }
+
+            search_size *= 2;
+        }
+
+        Err(Error::OffsetSearchFailed(format!(
+            "Pattern not found within +/-{} MB",
+            MAX_SEARCH_SIZE / 1024 / 1024
+        )))
     }
 
     // Private helper methods
@@ -1107,28 +1140,26 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
         // Phase 4: Play settings (requires user to set specific options)
         prompter.prompt_continue(
-            "Set the following settings and then press ENTER: RANDOM EXHARD OFF SUDDEN+",
+            "Set the following settings and then press ENTER: RANDOM OFF SUDDEN+",
         );
 
         prompter.display_message("Searching for PlaySettings...");
-        // RANDOM=1, EXHARD=4, OFF=0, SUDDEN+=1
+        // RANDOM=1, OFF=0, SUDDEN+=1
         let settings_addr1 = self.search_play_settings_offset(
             hint(old_offsets.play_settings),
             1, // RANDOM
-            4, // EXHARD
-            0, // OFF
+            0, // OFF (assist)
             1, // SUDDEN+
         )?;
 
         prompter.prompt_continue(
-            "Now set the following settings and then press ENTER: MIRROR EASY AUTO-SCRATCH HIDDEN+",
+            "Now set the following settings and then press ENTER: MIRROR AUTO-SCRATCH HIDDEN+",
         );
 
-        // MIRROR=4, EASY=2, AUTO-SCRATCH=1, HIDDEN+=2
+        // MIRROR=4, AUTO-SCRATCH=1, HIDDEN+=2
         let settings_addr2 = self.search_play_settings_offset(
             hint(old_offsets.play_settings),
             4, // MIRROR
-            2, // EASY
             1, // AUTO-SCRATCH
             2, // HIDDEN+
         )?;
@@ -1197,7 +1228,6 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
     /// Validate if the given address contains valid PlaySettings
     fn validate_play_settings_at(&self, addr: u64) -> Option<u64> {
         let style = self.reader.read_i32(addr).ok()?;
-        let gauge = self.reader.read_i32(addr + 4).ok()?;
         let assist = self.reader.read_i32(addr + 8).ok()?;
         let flip = self.reader.read_i32(addr + 12).ok()?;
         let range = self.reader.read_i32(addr + 16).ok()?;
@@ -1205,14 +1235,12 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         // Valid ranges check (aligned with C# implementation)
         // style: OFF(0), RANDOM(1), R-RANDOM(2), S-RANDOM(3), MIRROR(4),
         //        SYNCHRONIZE RANDOM(5), SYMMETRY RANDOM(6)
-        // gauge: OFF(0), ASSIST EASY(1), EASY(2), HARD(3), EX HARD(4)
         // assist: OFF(0), AUTO SCRATCH(1), 5KEYS(2), LEGACY NOTE(3),
         //         KEY ASSIST(4), ANY KEY(5)
         // flip: OFF(0), ON(1)
         // range: OFF(0), SUDDEN+(1), HIDDEN+(2), SUD+ & HID+(3),
         //        LIFT(4), LIFT & SUD+(5)
         if !(0..=6).contains(&style)
-            || !(0..=4).contains(&gauge)
             || !(0..=5).contains(&assist)
             || !(0..=1).contains(&flip)
             || !(0..=5).contains(&range)

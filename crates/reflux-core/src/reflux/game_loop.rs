@@ -307,14 +307,10 @@ impl Reflux {
             Grade::NoPlay
         };
 
-        // Read gauge (sum of P1 and P2, following C# implementation)
-        let gauge = self.read_gauge(reader);
-
         Ok(PlayData {
             timestamp: Utc::now(),
             chart,
             ex_score,
-            gauge,
             grade,
             lamp,
             judge,
@@ -341,28 +337,6 @@ impl Reflux {
                 unlocked: true,
             }
         }
-    }
-
-    /// Read gauge value from memory
-    ///
-    /// Gauge values are stored separately for P1 and P2 sides.
-    /// In SP mode, only one side has a value (other is 0).
-    /// Following C# implementation, we sum both values.
-    fn read_gauge(&self, reader: &MemoryReader) -> u8 {
-        let p1_raw = reader
-            .read_i32(self.offsets.judge_data + judge::P1_GAUGE)
-            .unwrap_or(-999);
-        let p2_raw = reader
-            .read_i32(self.offsets.judge_data + judge::P2_GAUGE)
-            .unwrap_or(-999);
-
-        info!("Gauge raw: P1={}, P2={}, sum={}", p1_raw, p2_raw, p1_raw + p2_raw);
-
-        // Sum P1 and P2 gauge values (C# implementation behavior)
-        // In SP mode, one side is 0, so this effectively returns the active side's value
-        let raw_value = p1_raw + p2_raw;
-        // Clamp to valid range (0-100%)
-        raw_value.clamp(0, 100) as u8
     }
 
     fn fetch_judge_data(&self, reader: &MemoryReader) -> Result<Judge> {
@@ -399,10 +373,9 @@ impl Reflux {
         let word: u64 = 4;
         let base = self.offsets.play_settings;
 
-        let (style_val, gauge_val, assist_val, range_val, h_ran_val, style2_val) = match play_type {
+        let (style_val, assist_val, range_val, h_ran_val, style2_val) = match play_type {
             PlayType::P1 | PlayType::Dp => {
                 let style = reader.read_i32(base)?;
-                let gauge = reader.read_i32(base + word)?;
                 let assist = reader.read_i32(base + word * 2)?;
                 let range = reader.read_i32(base + word * 4)?;
                 let h_ran = reader.read_i32(base + word * 9)?;
@@ -411,16 +384,15 @@ impl Reflux {
                 } else {
                     0
                 };
-                (style, gauge, assist, range, h_ran, style2)
+                (style, assist, range, h_ran, style2)
             }
             PlayType::P2 => {
                 let p2_offset = Settings::P2_OFFSET;
                 let style = reader.read_i32(base + p2_offset)?;
-                let gauge = reader.read_i32(base + p2_offset + word)?;
                 let assist = reader.read_i32(base + p2_offset + word * 2)?;
                 let range = reader.read_i32(base + p2_offset + word * 4)?;
                 let h_ran = reader.read_i32(base + p2_offset + word * 9)?;
-                (style, gauge, assist, range, h_ran, 0)
+                (style, assist, range, h_ran, 0)
             }
         };
 
@@ -428,8 +400,8 @@ impl Reflux {
         let battle_val = reader.read_i32(base + word * 8)?;
 
         Ok(Settings::from_raw_values(
-            play_type, style_val, style2_val, gauge_val, assist_val, range_val, flip_val,
-            battle_val, h_ran_val,
+            play_type, style_val, style2_val, assist_val, range_val, flip_val, battle_val,
+            h_ran_val,
         ))
     }
 

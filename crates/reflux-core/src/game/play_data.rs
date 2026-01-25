@@ -9,7 +9,6 @@ pub struct PlayData {
     pub timestamp: DateTime<Utc>,
     pub chart: ChartInfo,
     pub ex_score: u32,
-    pub gauge: u8,
     pub grade: Grade,
     pub lamp: Lamp,
     pub judge: Judge,

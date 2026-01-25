@@ -23,7 +23,6 @@ impl InvalidEnumValueError {
 pub struct Settings {
     pub style: Style,
     pub style2: Option<Style>, // For DP second side
-    pub gauge: GaugeType,
     pub assist: AssistType,
     pub range: RangeType,
     pub flip: bool,
@@ -45,7 +44,6 @@ impl Settings {
         play_type: PlayType,
         style_val: i32,
         style2_val: i32,
-        gauge_val: i32,
         assist_val: i32,
         range_val: i32,
         flip_val: i32,
@@ -66,11 +64,6 @@ impl Settings {
             None
         };
 
-        let gauge = gauge_val.try_into().unwrap_or_else(|_| {
-            warn!("Invalid gauge value: {}, using default", gauge_val);
-            GaugeType::default()
-        });
-
         let assist = assist_val.try_into().unwrap_or_else(|_| {
             warn!("Invalid assist value: {}, using default", assist_val);
             AssistType::default()
@@ -84,7 +77,6 @@ impl Settings {
         Self {
             style,
             style2,
-            gauge,
             assist,
             range,
             flip: flip_val == 1,
@@ -133,43 +125,6 @@ impl Style {
             Self::Mirror => "MIRROR",
             Self::SynchronizeRandom => "SYNCHRONIZE RANDOM",
             Self::SymmetryRandom => "SYMMETRY RANDOM",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum GaugeType {
-    #[default]
-    Off,
-    AssistEasy,
-    Easy,
-    Hard,
-    ExHard,
-}
-
-impl TryFrom<i32> for GaugeType {
-    type Error = InvalidEnumValueError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Off),
-            1 => Ok(Self::AssistEasy),
-            2 => Ok(Self::Easy),
-            3 => Ok(Self::Hard),
-            4 => Ok(Self::ExHard),
-            _ => Err(InvalidEnumValueError::new("GaugeType", value)),
-        }
-    }
-}
-
-impl GaugeType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Off => "OFF",
-            Self::AssistEasy => "ASSIST EASY",
-            Self::Easy => "EASY",
-            Self::Hard => "HARD",
-            Self::ExHard => "EX HARD",
         }
     }
 }
@@ -274,19 +229,6 @@ mod tests {
     }
 
     #[test]
-    fn test_gauge_type_try_from_valid() {
-        assert_eq!(GaugeType::try_from(0).unwrap(), GaugeType::Off);
-        assert_eq!(GaugeType::try_from(2).unwrap(), GaugeType::Easy);
-        assert_eq!(GaugeType::try_from(4).unwrap(), GaugeType::ExHard);
-    }
-
-    #[test]
-    fn test_gauge_type_try_from_invalid() {
-        assert!(GaugeType::try_from(5).is_err());
-        assert!(GaugeType::try_from(-1).is_err());
-    }
-
-    #[test]
     fn test_assist_type_try_from_valid() {
         assert_eq!(AssistType::try_from(0).unwrap(), AssistType::Off);
         assert_eq!(AssistType::try_from(1).unwrap(), AssistType::AutoScratch);
@@ -314,10 +256,9 @@ mod tests {
 
     #[test]
     fn test_settings_from_raw_values_p1() {
-        let settings = Settings::from_raw_values(PlayType::P1, 1, 0, 2, 0, 1, 0, 0, 0);
+        let settings = Settings::from_raw_values(PlayType::P1, 1, 0, 0, 1, 0, 0, 0);
         assert_eq!(settings.style, Style::Random);
         assert!(settings.style2.is_none());
-        assert_eq!(settings.gauge, GaugeType::Easy);
         assert_eq!(settings.range, RangeType::SuddenPlus);
         assert!(!settings.flip);
         assert!(!settings.battle);
@@ -326,10 +267,9 @@ mod tests {
 
     #[test]
     fn test_settings_from_raw_values_dp() {
-        let settings = Settings::from_raw_values(PlayType::Dp, 4, 1, 3, 0, 0, 1, 1, 1);
+        let settings = Settings::from_raw_values(PlayType::Dp, 4, 1, 0, 0, 1, 1, 1);
         assert_eq!(settings.style, Style::Mirror);
         assert_eq!(settings.style2, Some(Style::Random));
-        assert_eq!(settings.gauge, GaugeType::Hard);
         assert!(settings.flip);
         assert!(settings.battle);
         assert!(settings.h_ran);
@@ -338,9 +278,8 @@ mod tests {
     #[test]
     fn test_settings_from_raw_values_invalid_defaults() {
         // Invalid values should default to Off
-        let settings = Settings::from_raw_values(PlayType::P1, 100, 0, 100, 100, 100, 0, 0, 0);
+        let settings = Settings::from_raw_values(PlayType::P1, 100, 0, 100, 100, 0, 0, 0);
         assert_eq!(settings.style, Style::Off);
-        assert_eq!(settings.gauge, GaugeType::Off);
         assert_eq!(settings.assist, AssistType::Off);
         assert_eq!(settings.range, RangeType::Off);
     }

@@ -47,9 +47,6 @@
 /// ...      (reserved)         ...
 /// 0xD8     StateMarker1       4       Non-zero during play
 /// 0xDC     StateMarker2       4       Non-zero during play
-/// ...      (reserved)         ...
-/// 0x144    P1 Gauge           4       Player 1 gauge percentage
-/// 0x148    P2 Gauge           4       Player 2 gauge percentage
 /// ```
 pub mod judge {
     /// Word size (4 bytes / 32-bit integer)
@@ -86,10 +83,6 @@ pub mod judge {
     // Game state detection markers (offsets 54-55)
     pub const STATE_MARKER_1: u64 = WORD * 54;
     pub const STATE_MARKER_2: u64 = WORD * 55;
-
-    // Gauge percentage (offsets 81-82)
-    pub const P1_GAUGE: u64 = WORD * 81;
-    pub const P2_GAUGE: u64 = WORD * 82;
 
     /// Size of initial zero region in song select state (18 i32 values = 72 bytes)
     /// P1 (5) + P2 (5) + CB (2) + Fast/Slow (4) + MeasureEnd (2) = 18
