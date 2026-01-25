@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 use chrono::Utc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 
 // =============================================================================
 // Retry and polling configuration
@@ -41,12 +41,12 @@ impl Reflux {
         let reader = MemoryReader::new(process);
         let mut last_state = GameState::Unknown;
 
-        info!("Starting tracker loop...");
+        debug!("Starting tracker loop...");
 
         // Start TSV session
         self.session_manager = crate::storage::SessionManager::new("sessions");
         match self.session_manager.start_tsv_session() {
-            Ok(path) => info!("Started TSV session at {:?}", path),
+            Ok(path) => debug!("Started TSV session at {:?}", path),
             Err(e) => warn!("Failed to start TSV session: {}", e),
         }
 
@@ -71,7 +71,7 @@ impl Reflux {
                             );
                             thread::sleep(Duration::from_millis(delay));
                         } else {
-                            info!(
+                            debug!(
                                 "Process terminated after {} retries: {}",
                                 MAX_READ_RETRIES, e
                             );
@@ -87,7 +87,7 @@ impl Reflux {
             let current_state = self.detect_game_state(&reader)?;
 
             if current_state != last_state {
-                info!("State changed: {:?} -> {:?}", last_state, current_state);
+                debug!("State changed: {:?} -> {:?}", last_state, current_state);
                 self.handle_state_change(&reader, last_state, current_state)?;
                 last_state = current_state;
             }
@@ -247,7 +247,7 @@ impl Reflux {
             crate::game::detect_unlock_changes(&self.game_data.unlock_state, &current_state);
 
         if !changes.is_empty() {
-            info!("Detected {} unlock state changes", changes.len());
+            debug!("Detected {} unlock state changes", changes.len());
 
             // Update local state
             for (&song_id, unlock_data) in &changes {
@@ -439,7 +439,7 @@ impl Reflux {
 
         self.game_data.unlock_state =
             get_unlock_states(reader, self.offsets.unlock_data, &self.game_data.song_db)?;
-        info!(
+        debug!(
             "Loaded unlock state from memory ({} entries)",
             self.game_data.unlock_state.len()
         );

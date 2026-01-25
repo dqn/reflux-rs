@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 /// Minimum number of songs expected in the song database
@@ -175,9 +175,9 @@ struct Args {}
 fn main() -> Result<()> {
     Args::parse();
 
-    // Initialize logging (RUST_LOG がなければ info を既定にする)
+    // Initialize logging (RUST_LOG がなければ warn を既定にする)
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("reflux=info,reflux_core=info"));
+        .unwrap_or_else(|_| EnvFilter::new("reflux=warn,reflux_core=warn"));
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
     // Setup graceful shutdown handler
@@ -201,11 +201,11 @@ fn main() -> Result<()> {
     }
 
     // Main loop: wait for process (exits on Ctrl+C)
-    info!("Waiting for INFINITAS process...");
+    debug!("Waiting for INFINITAS process...");
     while running.load(Ordering::SeqCst) {
         match ProcessHandle::find_and_open() {
             Ok(process) => {
-                info!(
+                debug!(
                     "Found INFINITAS process (base: {:#x})",
                     process.base_address
                 );
@@ -216,7 +216,7 @@ fn main() -> Result<()> {
                 // Game version detection (best-effort)
                 let game_version = match find_game_version(&reader, process.base_address) {
                     Ok(Some(version)) => {
-                        info!("Game version: {}", version);
+                        debug!("Game version: {}", version);
                         Some(version)
                     }
                     Ok(None) => {
@@ -235,19 +235,19 @@ fn main() -> Result<()> {
 
                     let offsets = search_offsets_with_retry(&reader, game_version.as_ref())?;
 
-                    info!("Signature-based offset detection successful!");
+                    debug!("Signature-based offset detection successful!");
                     reflux.update_offsets(offsets);
                 }
 
                 // Load encoding fixes
                 let encoding_fixes = match EncodingFixes::load("encodingfixes.txt") {
                     Ok(ef) => {
-                        info!("Loaded {} encoding fixes", ef.len());
+                        debug!("Loaded {} encoding fixes", ef.len());
                         Some(ef)
                     }
                     Err(e) => {
                         if e.is_not_found() {
-                            info!("Encoding fixes file not found, using defaults");
+                            debug!("Encoding fixes file not found, using defaults");
                         } else {
                             warn!("Failed to load encoding fixes: {}", e);
                         }
@@ -256,24 +256,24 @@ fn main() -> Result<()> {
                 };
 
                 // Load song database from game memory
-                info!("Loading song database...");
+                debug!("Loading song database...");
                 let song_db = load_song_database_with_retry(
                     &reader,
                     reflux.offsets().song_list,
                     encoding_fixes.as_ref(),
                 )?;
-                info!("Loaded {} songs", song_db.len());
+                debug!("Loaded {} songs", song_db.len());
                 reflux.set_song_db(song_db.clone());
 
                 // Load score map from game memory
-                info!("Loading score map...");
+                debug!("Loading score map...");
                 let score_map = match ScoreMap::load_from_memory(
                     &reader,
                     reflux.offsets().data_map,
                     &song_db,
                 ) {
                     Ok(map) => {
-                        info!("Loaded {} score entries", map.len());
+                        debug!("Loaded {} score entries", map.len());
                         map
                     }
                     Err(e) => {
@@ -307,12 +307,12 @@ fn main() -> Result<()> {
                         if parse_failures > 1 {
                             warn!("{} custom type IDs failed to parse", parse_failures);
                         }
-                        info!("Loaded {} custom types", types.len());
+                        debug!("Loaded {} custom types", types.len());
                         reflux.set_custom_types(types);
                     }
                     Err(e) => {
                         if e.is_not_found() {
-                            info!("Custom types file not found, using defaults");
+                            debug!("Custom types file not found, using defaults");
                         } else {
                             warn!("Failed to load custom types: {}", e);
                         }
@@ -347,7 +347,7 @@ fn main() -> Result<()> {
                     error!("Failed to export tracker.tsv: {}", e);
                 }
 
-                info!("Process disconnected, waiting for reconnect...");
+                debug!("Process disconnected, waiting for reconnect...");
             }
             Err(_) => {
                 // Process not found, wait and retry

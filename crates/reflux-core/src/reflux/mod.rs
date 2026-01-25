@@ -3,7 +3,7 @@ mod game_loop;
 use std::collections::HashMap;
 use std::path::Path;
 
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 use crate::error::Result;
 use crate::game::{GameStateDetector, SongInfo, UnlockData};
@@ -55,7 +55,7 @@ impl Reflux {
 
         // Log offset validation status
         if offsets.has_state_detection_offsets() {
-            info!(
+            debug!(
                 "State detection offsets: judge_data=0x{:X}, play_settings=0x{:X}",
                 offsets.judge_data, offsets.play_settings
             );
@@ -92,11 +92,11 @@ impl Reflux {
         match Tracker::load(&path) {
             Ok(tracker) => {
                 self.tracker = tracker;
-                info!("Loaded tracker from {:?}", path.as_ref());
+                debug!("Loaded tracker from {:?}", path.as_ref());
             }
             Err(e) => {
                 if e.is_not_found() {
-                    info!("Tracker file not found, starting fresh");
+                    debug!("Tracker file not found, starting fresh");
                 } else {
                     warn!("Failed to load tracker: {}, starting fresh", e);
                 }
@@ -120,7 +120,7 @@ impl Reflux {
     pub fn load_unlock_db<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         match UnlockDb::load(&path) {
             Ok(db) => {
-                info!(
+                debug!(
                     "Loaded unlock db from {:?} ({} entries)",
                     path.as_ref(),
                     db.len()
@@ -129,7 +129,7 @@ impl Reflux {
             }
             Err(e) => {
                 if e.is_not_found() {
-                    info!("Unlock db file not found, starting fresh");
+                    debug!("Unlock db file not found, starting fresh");
                 } else {
                     warn!("Failed to load unlock db: {}, starting fresh", e);
                 }
@@ -160,7 +160,7 @@ impl Reflux {
     /// preserving the loaded tracker data and game state.
     pub fn update_offsets(&mut self, offsets: OffsetsCollection) {
         if offsets.has_state_detection_offsets() {
-            info!(
+            debug!(
                 "Updated state detection offsets: judge_data=0x{:X}, play_settings=0x{:X}",
                 offsets.judge_data, offsets.play_settings
             );

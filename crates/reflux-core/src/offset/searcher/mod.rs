@@ -4,7 +4,7 @@ mod constants;
 mod types;
 mod utils;
 
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use crate::error::{Error, Result};
 use crate::game::{PlayType, SongInfo};
@@ -66,7 +66,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         &mut self,
         signatures: &OffsetSignatureSet,
     ) -> Result<OffsetsCollection> {
-        info!("Starting signature-based offset detection...");
+        debug!("Starting signature-based offset detection...");
         let version = if signatures.version.trim().is_empty() {
             "unknown".to_string()
         } else {
@@ -78,12 +78,12 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         };
 
         // Phase 1: SongList (anchor)
-        info!("Phase 1: Searching SongList via signatures...");
+        debug!("Phase 1: Searching SongList via signatures...");
         offsets.song_list = self.search_song_list_by_signature(signatures)?;
-        info!("  SongList: 0x{:X}", offsets.song_list);
+        debug!("  SongList: 0x{:X}", offsets.song_list);
 
         // Phase 2: JudgeData
-        info!("Phase 2: Searching JudgeData via signatures...");
+        debug!("Phase 2: Searching JudgeData via signatures...");
         offsets.judge_data =
             match self.search_offset_by_signature(signatures, "judgeData", |this, addr| {
                 this.validate_judge_data_candidate(addr)
@@ -97,10 +97,10 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                     self.search_judge_data_near_song_list(offsets.song_list)?
                 }
             };
-        info!("  JudgeData: 0x{:X}", offsets.judge_data);
+        debug!("  JudgeData: 0x{:X}", offsets.judge_data);
 
         // Phase 3: PlaySettings
-        info!("Phase 3: Searching PlaySettings via signatures...");
+        debug!("Phase 3: Searching PlaySettings via signatures...");
         offsets.play_settings = match self.search_offset_by_signature(
             signatures,
             "playSettings",
@@ -115,10 +115,10 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                 self.search_play_settings_near_judge_data(offsets.judge_data)?
             }
         };
-        info!("  PlaySettings: 0x{:X}", offsets.play_settings);
+        debug!("  PlaySettings: 0x{:X}", offsets.play_settings);
 
         // Phase 4: PlayData
-        info!("Phase 4: Searching PlayData via signatures...");
+        debug!("Phase 4: Searching PlayData via signatures...");
         offsets.play_data =
             match self.search_offset_by_signature(signatures, "playData", |this, addr| {
                 this.validate_play_data_address(addr).unwrap_or(false)
@@ -132,10 +132,10 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                     self.search_play_data_near_play_settings(offsets.play_settings)?
                 }
             };
-        info!("  PlayData: 0x{:X}", offsets.play_data);
+        debug!("  PlayData: 0x{:X}", offsets.play_data);
 
         // Phase 5: CurrentSong
-        info!("Phase 5: Searching CurrentSong via signatures...");
+        debug!("Phase 5: Searching CurrentSong via signatures...");
         offsets.current_song = match self.search_offset_by_signature(
             signatures,
             "currentSong",
@@ -150,22 +150,22 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                 self.search_current_song_near_judge_data(offsets.judge_data)?
             }
         };
-        info!("  CurrentSong: 0x{:X}", offsets.current_song);
+        debug!("  CurrentSong: 0x{:X}", offsets.current_song);
 
         // Phase 6: DataMap / UnlockData (pattern search, using SongList as hint)
-        info!("Phase 6: Searching remaining offsets with patterns...");
+        debug!("Phase 6: Searching remaining offsets with patterns...");
         let base = self.reader.base_address();
         offsets.data_map = self.search_data_map_offset(base).or_else(|e| {
-            info!(
+            debug!(
                 "  DataMap search from base failed: {}, trying from SongList",
                 e
             );
             self.search_data_map_offset(offsets.song_list)
         })?;
-        info!("  DataMap: 0x{:X}", offsets.data_map);
+        debug!("  DataMap: 0x{:X}", offsets.data_map);
 
         offsets.unlock_data = self.search_unlock_data_offset(offsets.song_list)?;
-        info!("  UnlockData: 0x{:X}", offsets.unlock_data);
+        debug!("  UnlockData: 0x{:X}", offsets.unlock_data);
 
         if !offsets.is_valid() {
             return Err(Error::OffsetSearchFailed(
@@ -412,14 +412,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
                 let candidate_addr = self.buffer_base + pos as u64;
 
                 // Verify assist at offset 8 (word * 2) and range at offset 16 (word * 4)
-                let assist_at = self
-                    .reader
-                    .read_i32(candidate_addr + 8)
-                    .unwrap_or(-1);
-                let range_at = self
-                    .reader
-                    .read_i32(candidate_addr + 16)
-                    .unwrap_or(-1);
+                let assist_at = self.reader.read_i32(candidate_addr + 8).unwrap_or(-1);
+                let range_at = self.reader.read_i32(candidate_addr + 16).unwrap_or(-1);
 
                 if assist_at == assist && range_at == range {
                     return Ok(candidate_addr);
@@ -1139,9 +1133,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         ));
 
         // Phase 4: Play settings (requires user to set specific options)
-        prompter.prompt_continue(
-            "Set the following settings and then press ENTER: RANDOM OFF SUDDEN+",
-        );
+        prompter
+            .prompt_continue("Set the following settings and then press ENTER: RANDOM OFF SUDDEN+");
 
         prompter.display_message("Searching for PlaySettings...");
         // RANDOM=1, OFF=0, SUDDEN+=1
