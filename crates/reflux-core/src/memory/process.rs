@@ -42,7 +42,11 @@ pub struct ProcessHandle {
 #[cfg(target_os = "windows")]
 impl ProcessHandle {
     pub fn find_and_open() -> Result<Self> {
-        let pid = find_process_id(PROCESS_NAME)?;
+        let pid = find_process_id(PROCESS_NAME).map_err(|e| {
+            tracing::debug!("Process detection failed: {}", e);
+            e
+        })?;
+        tracing::debug!("Found {} with PID {}", PROCESS_NAME, pid);
         Self::open(pid)
     }
 
@@ -51,11 +55,16 @@ impl ProcessHandle {
         // and a process ID obtained from CreateToolhelp32Snapshot. The returned handle is managed
         // by this struct and closed in Drop.
         let handle = unsafe {
-            OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)
-                .map_err(|e| Error::ProcessOpenFailed(e.to_string()))?
+            OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid).map_err(|e| {
+                tracing::debug!("OpenProcess failed for PID {}: {}", pid, e);
+                Error::ProcessOpenFailed(e.to_string())
+            })?
         };
 
-        let (base_address, module_size) = get_module_info(handle)?;
+        let (base_address, module_size) = get_module_info(handle).map_err(|e| {
+            tracing::debug!("get_module_info failed: {}", e);
+            e
+        })?;
 
         Ok(Self {
             handle,
