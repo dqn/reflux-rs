@@ -404,11 +404,24 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         assist: i32,
         range: i32,
     ) -> Result<u64> {
-        self.load_buffer_around(base_hint, INITIAL_SEARCH_SIZE)?;
-
         // Full pattern: style, gauge, assist, flip(0), range - matches C# implementation
         let pattern = merge_byte_representations(&[style, gauge, assist, 0, range]);
-        self.fetch_and_search(base_hint, &pattern, 0, None)
+        let mut search_size = INITIAL_SEARCH_SIZE;
+
+        // Progressively expand search area, tolerating read errors
+        while search_size <= MAX_SEARCH_SIZE {
+            if let Ok(()) = self.load_buffer_around(base_hint, search_size) {
+                if let Some(pos) = self.find_pattern(&pattern, None) {
+                    return Ok(self.buffer_base + pos as u64);
+                }
+            }
+            search_size *= 2;
+        }
+
+        Err(Error::OffsetSearchFailed(format!(
+            "Pattern not found within +/-{} MB",
+            MAX_SEARCH_SIZE / 1024 / 1024
+        )))
     }
 
     // Private helper methods
