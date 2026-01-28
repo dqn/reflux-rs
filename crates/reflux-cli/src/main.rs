@@ -10,7 +10,8 @@ use reflux_core::UnlockType;
 use reflux_core::game::find_game_version;
 use reflux_core::{
     CustomTypes, EncodingFixes, MemoryReader, OffsetSearcher, OffsetsCollection, ProcessHandle,
-    Reflux, ScoreMap, SongInfo, builtin_signatures, fetch_song_database_with_fixes, save_offsets,
+    Reflux, ScoreMap, SongInfo, builtin_signatures, fetch_song_database_with_fixes, load_offsets,
+    save_offsets,
 };
 use shutdown::ShutdownSignal;
 use std::collections::HashMap;
@@ -198,6 +199,10 @@ fn search_offsets_with_retry(
 #[command(name = "reflux")]
 #[command(about = "INFINITAS score tracker", version)]
 struct Args {
+    /// Load offsets from file (skip automatic detection)
+    #[arg(long, value_name = "FILE")]
+    offsets_file: Option<String>,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -209,6 +214,9 @@ enum Command {
         /// Output file path
         #[arg(short, long, default_value = "offsets.txt")]
         output: String,
+        /// Process ID (skip automatic detection)
+        #[arg(long)]
+        pid: Option<u32>,
     },
 }
 
@@ -221,13 +229,13 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
     match args.command {
-        Some(Command::FindOffsets { output }) => run_find_offsets(&output),
-        None => run_tracking_mode(),
+        Some(Command::FindOffsets { output, pid }) => run_find_offsets(&output, pid),
+        None => run_tracking_mode(args.offsets_file.as_deref()),
     }
 }
 
 /// Run the find-offsets interactive mode
-fn run_find_offsets(output: &str) -> Result<()> {
+fn run_find_offsets(output: &str, pid: Option<u32>) -> Result<()> {
     // Setup graceful shutdown handler (Ctrl+C only, no keyboard monitor)
     let shutdown = Arc::new(ShutdownSignal::new());
     let shutdown_ctrlc = Arc::clone(&shutdown);
@@ -239,21 +247,27 @@ fn run_find_offsets(output: &str) -> Result<()> {
     let current_version = env!("CARGO_PKG_VERSION");
     info!("Reflux-RS {} - Offset Search Mode", current_version);
 
-    println!("Waiting for INFINITAS... (Press Ctrl+C to cancel)");
+    // Open process (either by PID or auto-detect)
+    let process = if let Some(pid) = pid {
+        println!("Opening process with PID {}...", pid);
+        ProcessHandle::open(pid)?
+    } else {
+        println!("Waiting for INFINITAS... (Press Ctrl+C to cancel)");
 
-    // Wait for process
-    let process = loop {
-        if shutdown.is_shutdown() {
-            info!("Cancelled");
-            return Ok(());
-        }
+        // Wait for process
+        loop {
+            if shutdown.is_shutdown() {
+                info!("Cancelled");
+                return Ok(());
+            }
 
-        match ProcessHandle::find_and_open() {
-            Ok(p) => break p,
-            Err(_) => {
-                if shutdown.wait(Duration::from_secs(2)) {
-                    info!("Cancelled");
-                    return Ok(());
+            match ProcessHandle::find_and_open() {
+                Ok(p) => break p,
+                Err(_) => {
+                    if shutdown.wait(Duration::from_secs(2)) {
+                        info!("Cancelled");
+                        return Ok(());
+                    }
                 }
             }
         }
@@ -311,7 +325,7 @@ fn run_find_offsets(output: &str) -> Result<()> {
 }
 
 /// Run the main tracking mode
-fn run_tracking_mode() -> Result<()> {
+fn run_tracking_mode(offsets_file: Option<&str>) -> Result<()> {
     // Setup graceful shutdown handler
     let shutdown = Arc::new(ShutdownSignal::new());
     let shutdown_ctrlc = Arc::clone(&shutdown);
@@ -328,8 +342,28 @@ fn run_tracking_mode() -> Result<()> {
     let current_version = env!("CARGO_PKG_VERSION");
     info!("Reflux-RS {}", current_version);
 
+    // Load offsets from file if specified
+    let initial_offsets = if let Some(path) = offsets_file {
+        match load_offsets(path) {
+            Ok(offsets) => {
+                info!("Loaded offsets from {}", path);
+                debug!(
+                    "  SongList: {:#x}, JudgeData: {:#x}, PlaySettings: {:#x}",
+                    offsets.song_list, offsets.judge_data, offsets.play_settings
+                );
+                offsets
+            }
+            Err(e) => {
+                warn!("Failed to load offsets from {}: {}", path, e);
+                OffsetsCollection::default()
+            }
+        }
+    } else {
+        OffsetsCollection::default()
+    };
+
     // Create Reflux instance
-    let mut reflux = Reflux::new(OffsetsCollection::default());
+    let mut reflux = Reflux::new(initial_offsets);
 
     // Main loop: wait for process (exits on Ctrl+C, Esc, or q)
     println!("Waiting for INFINITAS... (Press Esc or q to quit)");
