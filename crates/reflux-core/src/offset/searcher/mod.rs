@@ -388,7 +388,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
     /// Search for play settings offset (requires specific settings to be set)
     ///
-    /// Memory layout:
+    /// Memory layout (matches C# implementation):
     /// - 0x00: style (4 bytes)
     /// - 0x04: gauge (4 bytes)
     /// - 0x08: assist (4 bytes)
@@ -410,10 +410,10 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
         // Progressively expand search area, tolerating read errors
         while search_size <= MAX_SEARCH_SIZE {
-            if let Ok(()) = self.load_buffer_around(base_hint, search_size) {
-                if let Some(pos) = self.find_pattern(&pattern, None) {
-                    return Ok(self.buffer_base + pos as u64);
-                }
+            if self.load_buffer_around(base_hint, search_size).is_ok()
+                && let Some(pos) = self.find_pattern(&pattern, None)
+            {
+                return Ok(self.buffer_base + pos as u64);
             }
             search_size *= 2;
         }
@@ -1143,11 +1143,11 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         );
 
         prompter.display_message("Searching for PlaySettings...");
-        // RANDOM=1, EXHARD=5, OFF=0, SUDDEN+=1
+        // RANDOM=1, EXHARD=4, OFF=0, SUDDEN+=1 (C# values)
         let settings_addr1 = self.search_play_settings_offset(
             hint(old_offsets.play_settings),
             1, // RANDOM (style)
-            5, // EXHARD (gauge)
+            4, // EXHARD (gauge) - C# uses 4 for EXHARD
             0, // OFF (assist)
             1, // SUDDEN+ (range)
         )?;
@@ -1244,14 +1244,15 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         // Valid ranges check (aligned with C# implementation)
         // style: OFF(0), RANDOM(1), R-RANDOM(2), S-RANDOM(3), MIRROR(4),
         //        SYNCHRONIZE RANDOM(5), SYMMETRY RANDOM(6)
-        // gauge: OFF(0), ASSIST EASY(1), EASY(2), NORMAL(3), HARD(4), EXHARD(5)
+        // gauge: OFF(0), ASSIST EASY(1), EASY(2), HARD(3), EXHARD(4)
+        //        (C# uses: EXHARD=4, EASY=2 in search patterns)
         // assist: OFF(0), AUTO SCRATCH(1), 5KEYS(2), LEGACY NOTE(3),
         //         KEY ASSIST(4), ANY KEY(5)
         // flip: OFF(0), ON(1)
         // range: OFF(0), SUDDEN+(1), HIDDEN+(2), SUD+ & HID+(3),
         //        LIFT(4), LIFT & SUD+(5)
         if !(0..=6).contains(&style)
-            || !(0..=5).contains(&gauge)
+            || !(0..=4).contains(&gauge)
             || !(0..=5).contains(&assist)
             || !(0..=1).contains(&flip)
             || !(0..=5).contains(&range)
