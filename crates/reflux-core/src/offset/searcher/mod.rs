@@ -534,7 +534,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         true
     }
 
-    fn search_song_list_by_signature(&self, signatures: &OffsetSignatureSet) -> Result<u64> {
+    fn search_song_list_by_signature(&mut self, signatures: &OffsetSignatureSet) -> Result<u64> {
         let entry = signatures.entry("songList").ok_or_else(|| {
             Error::OffsetSearchFailed("Signature entry 'songList' not found".to_string())
         })?;
@@ -571,9 +571,10 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
             }
         }
 
-        Err(Error::OffsetSearchFailed(
-            "SongList not found via signatures".to_string(),
-        ))
+        // Fallback to pattern-based search if signature search fails
+        warn!("SongList signature search failed. Falling back to pattern search...");
+        let base = self.reader.base_address();
+        self.search_song_list_offset(base)
     }
 
     fn search_offset_by_signature<F>(

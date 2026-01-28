@@ -395,9 +395,25 @@ fn run_tracking_mode(offsets_file: Option<&str>) -> Result<()> {
                 };
 
                 // Check if offsets are valid before proceeding
-                if !reflux.offsets().is_valid() {
-                    info!("Invalid offsets detected. Attempting signature search...");
+                // First check basic validity (all offsets non-zero)
+                // Then validate signature offsets against the actual memory state
+                let needs_search = if !reflux.offsets().is_valid() {
+                    info!("Invalid offsets detected (some offsets are zero)");
+                    true
+                } else {
+                    let searcher = OffsetSearcher::new(&reader);
+                    if !searcher.validate_signature_offsets(reflux.offsets()) {
+                        info!(
+                            "Offset validation failed (offsets may be stale or incorrect). Attempting signature search..."
+                        );
+                        true
+                    } else {
+                        debug!("Loaded offsets validated successfully");
+                        false
+                    }
+                };
 
+                if needs_search {
                     let offsets =
                         search_offsets_with_retry(&reader, game_version.as_ref(), &shutdown)?;
                     let Some(offsets) = offsets else {
