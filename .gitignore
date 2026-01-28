@@ -2,4 +2,8 @@
 .agent/
 ralph-loop.local.md
 CLAUDE.local.md
-.claude/plans
+.claude/
+bash.exe.stackdump
+offsets.txt
+sessions/
+tracker.tsv
