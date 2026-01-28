@@ -92,50 +92,35 @@ pub fn builtin_signatures() -> OffsetSignatureSet {
     OffsetSignatureSet {
         version: "*".to_string(),
         entries: vec![
+            // songList: シグネチャ検索は旧バイナリ用、新バイナリでは相対オフセット検索にフォールバック
             OffsetSignatureEntry {
                 name: "songList".to_string(),
-                signatures: vec![
-                    CodeSignature {
-                        pattern: "48 8D 15 ?? ?? ?? ?? 48 8D 64 24 F8 48 89 D7".to_string(),
-                        instr_offset: 0,
-                        disp_offset: 3,
-                        instr_len: 7,
-                        deref: false,
-                        addend: 0x1A34,
-                    },
-                    CodeSignature {
-                        pattern: "48 8D 1D ?? ?? ?? ?? 45 19 CB".to_string(),
-                        instr_offset: 0,
-                        disp_offset: 3,
-                        instr_len: 7,
-                        deref: false,
-                        addend: -0x32F9,
-                    },
-                    CodeSignature {
-                        pattern: "8D 3D ?? ?? ?? ?? 45 89".to_string(),
-                        instr_offset: 0,
-                        disp_offset: 2,
-                        instr_len: 6,
-                        deref: false,
-                        addend: -0xD5BC,
-                    },
-                ],
+                signatures: vec![CodeSignature {
+                    pattern: "4C 8D 3D ?? ?? ?? ?? 45 89".to_string(),
+                    instr_offset: 0,
+                    disp_offset: 3,
+                    instr_len: 7,
+                    deref: false,
+                    addend: -0xD5BC,
+                }],
             },
+            // judgeData: 新パターン (両バイナリで動作)
             OffsetSignatureEntry {
                 name: "judgeData".to_string(),
                 signatures: vec![CodeSignature {
-                    pattern: "48 89 05 ?? ?? ?? ?? 48 89 05 9F 23 80 02 48 89".to_string(),
-                    instr_offset: 0,
-                    disp_offset: 3,
+                    pattern: "33 C0 48 8D 0D ?? ?? ?? ?? 66 89 05 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ?? 48 89 05 ?? ?? ?? ??".to_string(),
+                    instr_offset: 23,
+                    disp_offset: 26,
                     instr_len: 7,
                     deref: false,
                     addend: 0,
                 }],
             },
+            // playSettings: 短縮パターン (両バイナリで動作)
             OffsetSignatureEntry {
                 name: "playSettings".to_string(),
                 signatures: vec![CodeSignature {
-                    pattern: "89 2D ?? ?? ?? ?? EB 0C 48 8D 0D 0F ED 45 02 E8".to_string(),
+                    pattern: "89 2D ?? ?? ?? ?? EB 0C 48 8D 0D".to_string(),
                     instr_offset: 0,
                     disp_offset: 2,
                     instr_len: 6,
@@ -143,10 +128,11 @@ pub fn builtin_signatures() -> OffsetSignatureSet {
                     addend: 0x4,
                 }],
             },
+            // playData: 短縮パターン (両バイナリで動作)
             OffsetSignatureEntry {
                 name: "playData".to_string(),
                 signatures: vec![CodeSignature {
-                    pattern: "44 89 25 ?? ?? ?? ?? 8B 00 89 05 64 D5 3D 02 8B".to_string(),
+                    pattern: "44 89 25 ?? ?? ?? ?? 8B 00 89 05".to_string(),
                     instr_offset: 0,
                     disp_offset: 3,
                     instr_len: 7,
@@ -154,34 +140,17 @@ pub fn builtin_signatures() -> OffsetSignatureSet {
                     addend: 0,
                 }],
             },
+            // currentSong: 新パターン (両バイナリで動作、addend 更新)
             OffsetSignatureEntry {
                 name: "currentSong".to_string(),
-                signatures: vec![
-                    CodeSignature {
-                        pattern: "48 89 05 ?? ?? ?? ?? 48 89 05 A7 12".to_string(),
-                        instr_offset: 0,
-                        disp_offset: 3,
-                        instr_len: 7,
-                        deref: false,
-                        addend: -0x44,
-                    },
-                    CodeSignature {
-                        pattern: "48 89 05 ?? ?? ?? ?? 48 89 05 A8 12".to_string(),
-                        instr_offset: 0,
-                        disp_offset: 3,
-                        instr_len: 7,
-                        deref: false,
-                        addend: -0x4C,
-                    },
-                    CodeSignature {
-                        pattern: "89 05 ?? ?? ?? ?? 88 05 92".to_string(),
-                        instr_offset: 0,
-                        disp_offset: 2,
-                        instr_len: 6,
-                        deref: false,
-                        addend: -0x54,
-                    },
-                ],
+                signatures: vec![CodeSignature {
+                    pattern: "48 8D 2D ?? ?? ?? ?? 48 89 6C 24 60 33 F6 89 35".to_string(),
+                    instr_offset: 0,
+                    disp_offset: 3,
+                    instr_len: 7,
+                    deref: false,
+                    addend: 0x120,
+                }],
             },
         ],
     }

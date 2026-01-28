@@ -88,10 +88,11 @@ pub const PLAY_SETTINGS_TO_PLAY_DATA: u64 = 0x2C0;
 /// This is ~16x the measured variation to ensure reliable detection.
 pub const PLAY_DATA_SEARCH_RANGE: usize = 0x100;
 
-/// Expected offset: currentSong - judgeData ≈ 0x160
+/// Expected offset: currentSong - judgeData ≈ 0x1E4
 ///
 /// Historical variation: ±0x10 (16 bytes)
-pub const JUDGE_TO_CURRENT_SONG: u64 = 0x160;
+/// - bm2dx-1 and bm2dx-2: 0x1E4 (same value)
+pub const JUDGE_TO_CURRENT_SONG: u64 = 0x1E4;
 
 /// Search range for currentSong (±256 bytes)
 ///
