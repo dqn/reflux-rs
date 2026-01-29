@@ -700,105 +700,42 @@ fn normalize_title_for_matching(title: &str) -> String {
 
 /// Fetch a single song by its song_id from memory
 ///
-/// This function searches through the metadata table to find a specific song.
-/// Useful for dynamically loading songs that weren't found during initial scan.
+/// This function searches through the song list entries to find a specific song.
+/// Uses the same memory layout as C# Reflux: song_id is stored at offset 624
+/// within each 1008-byte entry.
 ///
 /// Memory structure:
-/// - text_entry[i] = song_list_addr + i * ENTRY_SIZE
-/// - meta_entry[i] = song_list_addr + METADATA_OFFSET + i * ENTRY_SIZE
+/// - entry[i] = song_list_addr + i * ENTRY_SIZE (0x3F0 = 1008 bytes)
+/// - song_id is at offset 624 within each entry
 pub fn fetch_song_by_id<R: ReadMemory>(
     reader: &R,
     song_list_addr: u64,
     target_song_id: u32,
     scan_size: usize,
 ) -> Option<SongInfo> {
-    use encoding_rs::SHIFT_JIS;
-
     if song_list_addr == 0 {
         return None;
     }
 
     const ENTRY_SIZE: u64 = SongInfo::MEMORY_SIZE as u64; // 0x3F0 = 1008 bytes
-    const METADATA_OFFSET: u64 = SongInfo::METADATA_TABLE_OFFSET as u64; // 0x7E0 = 2016 bytes
 
     let max_entries = (scan_size as u64 / ENTRY_SIZE).min(5000);
 
     // Scan each entry for the target song_id
     for i in 0..max_entries {
-        let text_addr = song_list_addr + i * ENTRY_SIZE;
-        let meta_addr = text_addr + METADATA_OFFSET;
+        let entry_addr = song_list_addr + i * ENTRY_SIZE;
 
-        // Read metadata
-        let Ok(meta_bytes) = reader.read_bytes(meta_addr, 20) else {
-            continue;
-        };
-
-        let song_id = i32::from_le_bytes([
-            meta_bytes[0],
-            meta_bytes[1],
-            meta_bytes[2],
-            meta_bytes[3],
-        ]);
-
-        if song_id as u32 != target_song_id {
-            continue;
-        }
-
-        let folder = i32::from_le_bytes([
-            meta_bytes[4],
-            meta_bytes[5],
-            meta_bytes[6],
-            meta_bytes[7],
-        ]);
-
-        // Validate folder
-        if folder < 1 || folder > 50 {
-            continue;
-        }
-
-        // Read title from text table
-        let title = if let Ok(title_bytes) = reader.read_bytes(text_addr, 64) {
-            let len = title_bytes.iter().position(|&b| b == 0).unwrap_or(64);
-            if len > 0 {
-                let (decoded, _, _) = SHIFT_JIS.decode(&title_bytes[..len]);
-                let title = decoded.trim();
-                if !title.is_empty() {
-                    Arc::from(title)
-                } else {
-                    Arc::from(format!("(song_id={})", song_id))
-                }
-            } else {
-                Arc::from(format!("(song_id={})", song_id))
+        // Use the proper read_from_memory function that reads song_id from offset 624
+        match SongInfo::read_from_memory(reader, entry_addr) {
+            Ok(Some(song)) if song.id == target_song_id => {
+                debug!(
+                    "Dynamically loaded song_id={} title={:?} folder={}",
+                    song.id, song.title, song.folder
+                );
+                return Some(song);
             }
-        } else {
-            Arc::from(format!("(song_id={})", song_id))
-        };
-
-        // Parse levels from difficulty ASCII (offset 8 in metadata)
-        let mut levels = [0u8; 10];
-        for (j, &byte) in meta_bytes[8..18].iter().enumerate() {
-            if byte >= b'0' && byte <= b'9' {
-                levels[j] = byte - b'0';
-            }
+            _ => continue,
         }
-
-        debug!(
-            "Dynamically loaded song_id={} title={:?} folder={}",
-            song_id, title, folder
-        );
-
-        return Some(SongInfo {
-            id: song_id as u32,
-            title,
-            title_english: Arc::from(""),
-            artist: Arc::from(""),
-            genre: Arc::from(""),
-            bpm: Arc::from(""),
-            folder,
-            levels,
-            total_notes: [0; 10],
-            unlock_type: UnlockType::default(),
-        });
     }
 
     None
@@ -806,111 +743,48 @@ pub fn fetch_song_by_id<R: ReadMemory>(
 
 /// Build song database directly from memory for new INFINITAS versions
 ///
-/// This function scans memory for (song_id, folder) pairs and reads corresponding
-/// titles from the text table. Unlike the old approach, this works with lazy-loaded
-/// data structures.
+/// This function scans memory to find all loaded songs. Each entry is 1008 bytes
+/// and contains all song metadata including song_id at offset 624.
 ///
 /// Memory structure:
-/// - text_entry[i] = text_base + i * ENTRY_SIZE (0x3F0 = 1008 bytes)
-/// - meta_entry[i] = text_base + METADATA_OFFSET (0x7E0) + i * ENTRY_SIZE
+/// - entry[i] = song_list_base + i * ENTRY_SIZE (0x3F0 = 1008 bytes)
 pub fn fetch_song_database_from_memory_scan<R: ReadMemory>(
     reader: &R,
-    text_base: u64,
+    song_list_base: u64,
     scan_size: usize,
 ) -> HashMap<u32, SongInfo> {
-    use encoding_rs::SHIFT_JIS;
-
     const ENTRY_SIZE: u64 = SongInfo::MEMORY_SIZE as u64; // 0x3F0 = 1008 bytes
-    const METADATA_OFFSET: u64 = SongInfo::METADATA_TABLE_OFFSET as u64; // 0x7E0 = 2016 bytes
 
     let mut result = HashMap::new();
     let max_entries = (scan_size as u64 / ENTRY_SIZE).min(5000);
 
     // Note: With lazy loading, songs may be scattered across the entry table.
-    // We scan all entries without early termination to find all loaded songs.
-    // Approach: first check if title exists, then read metadata.
+    // We scan all entries to find all loaded songs.
     for i in 0..max_entries {
-        let text_addr = text_base + i * ENTRY_SIZE;
-        let meta_addr = text_addr + METADATA_OFFSET;
+        let entry_addr = song_list_base + i * ENTRY_SIZE;
 
-        // First, check if title exists at this entry
-        let title = match reader.read_bytes(text_addr, 64) {
-            Ok(title_bytes) => {
-                let len = title_bytes.iter().position(|&b| b == 0).unwrap_or(64);
-                if len == 0 {
-                    continue;
-                }
-                let (decoded, _, _) = SHIFT_JIS.decode(&title_bytes[..len]);
-                let title = decoded.trim();
-                if title.is_empty()
-                    || !title
-                        .chars()
-                        .next()
-                        .is_some_and(|c| c.is_ascii_graphic() || !c.is_ascii())
-                {
-                    continue;
-                }
-                Arc::from(title)
-            }
-            Err(_) => continue,
+        // Use the proper read_from_memory function
+        let song = match SongInfo::read_from_memory(reader, entry_addr) {
+            Ok(Some(song)) => song,
+            _ => continue,
         };
 
-        // Read metadata for this entry
-        let Ok(meta_bytes) = reader.read_bytes(meta_addr, 20) else {
-            continue;
-        };
-
-        let song_id = i32::from_le_bytes([
-            meta_bytes[0],
-            meta_bytes[1],
-            meta_bytes[2],
-            meta_bytes[3],
-        ]);
-        let folder = i32::from_le_bytes([
-            meta_bytes[4],
-            meta_bytes[5],
-            meta_bytes[6],
-            meta_bytes[7],
-        ]);
-
-        // Validate song_id and folder ranges
-        // Note: folder values vary widely in new INFINITAS versions (e.g., 1-200+)
-        if song_id < 1000 || song_id > 90000 || folder < 1 || folder > 200 {
+        // Validate song_id range
+        if song.id < 1000 || song.id > 90000 {
             continue;
         }
 
         // Skip if we already have this song_id
-        if result.contains_key(&(song_id as u32)) {
+        if result.contains_key(&song.id) {
             continue;
-        }
-
-        // Parse levels from difficulty ASCII (offset 8 in metadata)
-        let mut levels = [0u8; 10];
-        for (j, &byte) in meta_bytes[8..18].iter().enumerate() {
-            if byte >= b'0' && byte <= b'9' {
-                levels[j] = byte - b'0';
-            }
         }
 
         debug!(
             "Found song_id={} title={:?} folder={}",
-            song_id, title, folder
+            song.id, song.title, song.folder
         );
 
-        let song = SongInfo {
-            id: song_id as u32,
-            title,
-            title_english: Arc::from(""),
-            artist: Arc::from(""),
-            genre: Arc::from(""),
-            bpm: Arc::from(""),
-            folder,
-            levels,
-            total_notes: [0; 10], // Not available in metadata
-            unlock_type: UnlockType::default(),
-        };
-
-        result.insert(song_id as u32, song);
+        result.insert(song.id, song);
     }
 
     info!("Fetched {} songs from memory scan", result.len());
