@@ -686,6 +686,103 @@ fn normalize_title_for_matching(title: &str) -> String {
         .collect()
 }
 
+/// Fetch a single song by its song_id from memory
+///
+/// This function searches through the metadata table to find a specific song.
+/// Useful for dynamically loading songs that weren't found during initial scan.
+pub fn fetch_song_by_id<R: ReadMemory>(
+    reader: &R,
+    song_list_addr: u64,
+    target_song_id: u32,
+    scan_size: usize,
+) -> Option<SongInfo> {
+    use encoding_rs::SHIFT_JIS;
+
+    if song_list_addr == 0 {
+        return None;
+    }
+
+    let metadata_base = song_list_addr + SongInfo::METADATA_TABLE_OFFSET as u64;
+
+    // Read metadata area
+    let buffer = reader.read_bytes(metadata_base, scan_size).ok()?;
+
+    // Scan for the target song_id
+    for offset in (0..buffer.len().saturating_sub(32)).step_by(4) {
+        let song_id = i32::from_le_bytes([
+            buffer[offset],
+            buffer[offset + 1],
+            buffer[offset + 2],
+            buffer[offset + 3],
+        ]);
+
+        if song_id as u32 != target_song_id {
+            continue;
+        }
+
+        let folder = i32::from_le_bytes([
+            buffer[offset + 4],
+            buffer[offset + 5],
+            buffer[offset + 6],
+            buffer[offset + 7],
+        ]);
+
+        // Validate folder
+        if folder < 1 || folder > 50 {
+            continue;
+        }
+
+        // Calculate title address: metadata_addr - 0x7E0
+        let metadata_addr = metadata_base + offset as u64;
+        let title_addr = metadata_addr.saturating_sub(SongInfo::METADATA_TABLE_OFFSET as u64);
+
+        // Read title
+        let title = if let Ok(title_bytes) = reader.read_bytes(title_addr, 64) {
+            let len = title_bytes.iter().position(|&b| b == 0).unwrap_or(64);
+            if len > 0 {
+                let (decoded, _, _) = SHIFT_JIS.decode(&title_bytes[..len]);
+                let title = decoded.trim();
+                if !title.is_empty() {
+                    Arc::from(title)
+                } else {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+        } else {
+            continue;
+        };
+
+        // Parse levels (ASCII at offset 8)
+        let mut levels = [0u8; 10];
+        if offset + 18 <= buffer.len() {
+            for (i, &byte) in buffer[offset + 8..offset + 18].iter().enumerate() {
+                if byte >= b'0' && byte <= b'9' {
+                    levels[i] = byte - b'0';
+                }
+            }
+        }
+
+        debug!("Dynamically loaded song_id={} title={:?} folder={}", song_id, title, folder);
+
+        return Some(SongInfo {
+            id: song_id as u32,
+            title,
+            title_english: Arc::from(""),
+            artist: Arc::from(""),
+            genre: Arc::from(""),
+            bpm: Arc::from(""),
+            folder,
+            levels,
+            total_notes: [0; 10],
+            unlock_type: UnlockType::default(),
+        });
+    }
+
+    None
+}
+
 /// Build song database directly from memory for new INFINITAS versions
 ///
 /// This function scans memory for (song_id, folder) pairs and reads corresponding
