@@ -271,10 +271,76 @@ enum Command {
         /// Output file path (JSON)
         #[arg(short, long)]
         output: Option<String>,
+        /// Entry size in bytes (default: 1200)
+        #[arg(long)]
+        entry_size: Option<usize>,
     },
     /// Explore memory structure at a specific address
     Explore {
         /// Base address to explore (hex, e.g., 0x1431865A0)
+        #[arg(long)]
+        address: String,
+        /// Process ID (skip automatic detection)
+        #[arg(long)]
+        pid: Option<u32>,
+    },
+    /// Dump raw bytes from memory (hexdump)
+    Hexdump {
+        /// Start address (hex, e.g., 0x1431B08A0)
+        #[arg(long)]
+        address: String,
+        /// Number of bytes to dump (default: 256)
+        #[arg(long, default_value = "256")]
+        size: usize,
+        /// Include ASCII representation
+        #[arg(long)]
+        ascii: bool,
+        /// Process ID (skip automatic detection)
+        #[arg(long)]
+        pid: Option<u32>,
+    },
+    /// Search for values in memory
+    Search {
+        /// Search for a string (Shift-JIS encoded)
+        #[arg(long)]
+        string: Option<String>,
+        /// Search for a 32-bit integer
+        #[arg(long)]
+        i32: Option<i32>,
+        /// Search for a 16-bit integer
+        #[arg(long)]
+        i16: Option<i16>,
+        /// Search for a byte pattern (hex, e.g., "00 04 07 0A", use ?? for wildcard)
+        #[arg(long)]
+        pattern: Option<String>,
+        /// Maximum number of results (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: usize,
+        /// Process ID (skip automatic detection)
+        #[arg(long)]
+        pid: Option<u32>,
+    },
+    /// Calculate offset between two addresses
+    Offset {
+        /// Start address (hex)
+        #[arg(long)]
+        from: String,
+        /// End address (hex)
+        #[arg(long)]
+        to: String,
+    },
+    /// Validate memory structures
+    Validate {
+        #[command(subcommand)]
+        target: ValidateTarget,
+    },
+}
+
+#[derive(Subcommand)]
+enum ValidateTarget {
+    /// Validate a song entry structure
+    SongEntry {
+        /// Address of the song entry (hex, e.g., 0x1431B08A0)
         #[arg(long)]
         address: String,
         /// Process ID (skip automatic detection)
@@ -310,10 +376,24 @@ fn main() -> Result<()> {
             range,
             tsv,
             output,
-        }) => run_scan_mode(offsets_file.as_deref(), pid, range, tsv.as_deref(), output.as_deref()),
+            entry_size,
+        }) => run_scan_mode(offsets_file.as_deref(), pid, range, tsv.as_deref(), output.as_deref(), entry_size),
         Some(Command::Explore { address, pid }) => {
             let addr = u64::from_str_radix(address.trim_start_matches("0x").trim_start_matches("0X"), 16)?;
             run_explore_mode(addr, pid)
+        }
+        Some(Command::Hexdump { address, size, ascii, pid }) => {
+            let addr = parse_hex_address(&address)?;
+            run_hexdump_mode(addr, size, ascii, pid)
+        }
+        Some(Command::Search { string, i32, i16, pattern, limit, pid }) => {
+            run_search_mode(string, i32, i16, pattern, limit, pid)
+        }
+        Some(Command::Offset { from, to }) => {
+            run_offset_mode(&from, &to)
+        }
+        Some(Command::Validate { target }) => {
+            run_validate_mode(target)
         }
         None => run_tracking_mode(args.offsets_file.as_deref()),
     }
@@ -1089,6 +1169,28 @@ fn run_explore_mode(base_addr: u64, pid: Option<u32>) -> Result<()> {
 
         let valid_meta = song_id >= 1000 && song_id <= 90000 && folder >= 1 && folder <= 200;
 
+        // Debug: Look for song_id=9003 regardless of filter
+        if song_id == 9003 {
+            println!("*** FOUND song_id=9003 (metadata) at entry={}, folder={}, title={:?}", i, folder, title);
+        }
+
+        // Also check C# style offset (0x270 from entry start for song_id)
+        let csharp_id_offset = 624u64; // 256 + 368 = 0x270
+        if let Ok(csharp_id) = reader.read_i32(text_addr + csharp_id_offset) {
+            if csharp_id == 9003 {
+                // Read difficulty levels at offset 288 (0x120)
+                let levels = reader.read_bytes(text_addr + 288, 10).unwrap_or_default();
+                println!("*** FOUND song_id=9003 (C# style) at entry={}, title={:?}, levels={:?}", i, title, levels);
+            }
+        }
+
+        // Debug: Look for title containing "fun"
+        if let Some(ref t) = title {
+            if t.to_lowercase().contains("fun") {
+                println!("*** FOUND title containing 'fun' at entry={}, id={}, folder={}, title={:?}", i, song_id, folder, t);
+            }
+        }
+
         match (title.is_some(), valid_meta) {
             (true, true) => {
                 has_title += 1;
@@ -1144,7 +1246,679 @@ fn run_explore_mode(base_addr: u64, pid: Option<u32>) -> Result<()> {
             100.0 * found_songs.len() as f64 / (max_idx - min_idx + 1) as f64);
     }
 
+    // Check first entry (5.1.1.) with both old and new offsets
+    println!();
+    println!("=== Analyzing first entry (5.1.1.) structure ===");
+    if let Ok(data) = reader.read_bytes(base_addr, 1200) {
+        println!("  Reading from 0x{:X}:", base_addr);
+
+        // Check title
+        let title_len = data.iter().take(64).position(|&b| b == 0).unwrap_or(64);
+        let (title, _, _) = encoding_rs::SHIFT_JIS.decode(&data[..title_len]);
+        println!("    title at 0: {:?}", title.trim());
+
+        // Check OLD offsets (C# style)
+        let old_levels = &data[288..298];
+        let old_song_id = i32::from_le_bytes([data[624], data[625], data[626], data[627]]);
+        println!("    OLD: song_id at 624 = {}, levels at 288 = {:?}", old_song_id, old_levels);
+
+        // Check NEW offsets (discovered from 'fun')
+        let new_levels = &data[480..490];
+        let new_song_id = i32::from_le_bytes([data[816], data[817], data[818], data[819]]);
+        println!("    NEW: song_id at 816 = {}, levels at 480 = {:?}", new_song_id, new_levels);
+
+        // Dump some key offsets to understand structure
+        for offset in [256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1088].iter() {
+            if *offset + 64 <= 1200 {
+                let str_bytes = &data[*offset..*offset + 64];
+                let len = str_bytes.iter().position(|&b| b == 0).unwrap_or(64);
+                if len > 0 && str_bytes[0] >= 0x20 && str_bytes[0] < 0x80 {
+                    let (decoded, _, _) = encoding_rs::SHIFT_JIS.decode(&str_bytes[..len]);
+                    println!("    offset {}: {:?}", offset, decoded.trim());
+                }
+            }
+        }
+    }
+
+    // Try scanning with NEW offsets
+    println!();
+    println!("=== Scanning with NEW offsets (song_id at 816) ===");
+    const NEW_ENTRY_SIZE: u64 = 1200; // Hypothesized new entry size
+    let new_max_entries = (0x800000u64 / NEW_ENTRY_SIZE).min(2000);
+    let mut found_with_new = Vec::new();
+
+    for i in 0..new_max_entries {
+        let entry_addr = base_addr + i * NEW_ENTRY_SIZE;
+        if let Ok(data) = reader.read_bytes(entry_addr, 1200) {
+            // Check for valid title
+            let title_len = data.iter().take(64).position(|&b| b == 0).unwrap_or(64);
+            if title_len == 0 || data[0] < 0x20 {
+                continue;
+            }
+            let (title, _, _) = encoding_rs::SHIFT_JIS.decode(&data[..title_len]);
+            let title = title.trim();
+            if title.is_empty() {
+                continue;
+            }
+
+            // Read with NEW offsets
+            let song_id = i32::from_le_bytes([data[816], data[817], data[818], data[819]]);
+            let levels = &data[480..490];
+
+            if song_id >= 1000 && song_id <= 50000 {
+                found_with_new.push((i, song_id, title.to_string(), levels.to_vec()));
+                if song_id == 9003 {
+                    println!("  *** FOUND song_id=9003: entry={}, title={:?}, levels={:?}", i, title, levels);
+                }
+            }
+        }
+    }
+    println!("  Found {} songs with new offsets", found_with_new.len());
+    for (i, (idx, id, title, levels)) in found_with_new.iter().take(10).enumerate() {
+        println!("    [{:2}] entry={:4}, id={:5}, title={:?}, levels={:?}", i, idx, id, title, levels);
+    }
+
+    // Check currentSong offset (0x1428382d0) and surrounding area
+    let current_song_addr = 0x1428382d0u64;
+    println!();
+    println!("=== Current Song Info at 0x{:X} ===", current_song_addr);
+    if let Ok(bytes) = reader.read_bytes(current_song_addr, 128) {
+        let song_id = i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        let difficulty = i32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+        println!("  song_id (offset 0): {}", song_id);
+        println!("  difficulty (offset 4): {}", difficulty);
+        println!("  raw bytes 0-63: {:02X?}", &bytes[..64]);
+        println!("  raw bytes 64-127: {:02X?}", &bytes[64..128]);
+
+        // Look for pointers (values that look like addresses)
+        for i in (0..120).step_by(8) {
+            let val = u64::from_le_bytes([
+                bytes[i], bytes[i+1], bytes[i+2], bytes[i+3],
+                bytes[i+4], bytes[i+5], bytes[i+6], bytes[i+7],
+            ]);
+            if val > 0x140000000 && val < 0x150000000 {
+                println!("  Potential pointer at offset {}: 0x{:X}", i, val);
+                // Try to read what's at that address
+                if let Ok(target_bytes) = reader.read_bytes(val, 64) {
+                    let len = target_bytes.iter().position(|&b| b == 0).unwrap_or(64);
+                    if len > 0 && target_bytes[0] >= 0x20 {
+                        let (decoded, _, _) = encoding_rs::SHIFT_JIS.decode(&target_bytes[..len]);
+                        println!("    -> String: {:?}", decoded.trim());
+                    }
+                }
+            }
+        }
+    }
+
+    // Search for "fun" string in memory (around song_list area)
+    println!();
+    println!("=== Searching for 'fun' string in memory ===");
+    let search_start = base_addr;
+    let search_size = 0x800000u64; // 8MB
+    let chunk_size = 0x10000usize; // 64KB chunks
+
+    let fun_pattern = b"fun\x00"; // "fun" followed by null terminator
+    let mut found_fun = Vec::new();
+
+    for chunk_start in (0..search_size).step_by(chunk_size) {
+        let addr = search_start + chunk_start;
+        if let Ok(chunk) = reader.read_bytes(addr, chunk_size) {
+            for i in 0..(chunk_size - 4) {
+                if &chunk[i..i+4] == fun_pattern {
+                    found_fun.push(addr + i as u64);
+                }
+            }
+        }
+    }
+
+    println!("  Found {} occurrences of 'fun\\0'", found_fun.len());
+    // Only analyze the first "fun" as it appears to be the title
+    if let Some(addr) = found_fun.first() {
+        println!("  Analyzing first 'fun' at 0x{:X} as entry start:", addr);
+
+        // Read a larger buffer to analyze the structure
+        if let Ok(data) = reader.read_bytes(*addr, 1024) {
+            // Dump strings at key offsets
+            for (name, offset) in [
+                ("title (0)", 0usize),
+                ("title_en (64)", 64),
+                ("genre (128)", 128),
+                ("artist (192)", 192),
+                ("unknown (256)", 256),
+                ("unknown (320)", 320),
+                ("unknown (384)", 384),
+                ("unknown (448)", 448),
+                ("unknown (512)", 512),
+            ].iter() {
+                let str_bytes = &data[*offset..*offset + 64];
+                let len = str_bytes.iter().position(|&b| b == 0).unwrap_or(64);
+                if len > 0 && str_bytes[0] >= 0x20 {
+                    let (decoded, _, _) = encoding_rs::SHIFT_JIS.decode(&str_bytes[..len]);
+                    println!("      {}: {:?}", name, decoded.trim());
+                } else {
+                    println!("      {}: (empty or binary)", name);
+                }
+            }
+
+            // Check for levels-like data (10 consecutive small bytes)
+            println!("      Scanning for levels pattern (10 bytes, values 0-12):");
+            for offset in (256..900).step_by(8) {
+                let slice = &data[offset..offset + 10];
+                if slice.iter().all(|&b| b <= 12) && slice.iter().any(|&b| b > 0) {
+                    println!("        offset {}: {:?}", offset, slice);
+                }
+            }
+        }
+
+        // Check larger area for song_id
+        if let Ok(wide_data) = reader.read_bytes(*addr, 1024) {
+            println!("      Scanning for song_id=9003 in entry:");
+            let target_bytes: [u8; 4] = 9003u32.to_le_bytes();
+            for j in 0..1020 {
+                if &wide_data[j..j+4] == &target_bytes {
+                    println!("        *** song_id=9003 at offset {} ***", j);
+                }
+            }
+        }
+    }
+
+    // Search for song_id=9003 (0x232B) as a 4-byte value in memory
+    println!();
+    println!("=== Searching for song_id=9003 (0x232B) as 4-byte value ===");
+    let target_id: u32 = 9003;
+    let target_bytes = target_id.to_le_bytes();
+    let search_size = 0x800000usize; // 8MB
+
+    if let Ok(data) = reader.read_bytes(base_addr, search_size) {
+        let mut found_locations = Vec::new();
+        for i in 0..(search_size - 4) {
+            if &data[i..i+4] == &target_bytes {
+                found_locations.push(base_addr + i as u64);
+            }
+        }
+
+        println!("  Found {} occurrences of 0x{:08X} ({})", found_locations.len(), target_id, target_id);
+        for (i, addr) in found_locations.iter().take(20).enumerate() {
+            let offset_from_base = addr - base_addr;
+            println!("  [{}] 0x{:X} (base+0x{:X})", i, addr, offset_from_base);
+
+            // Read context around this location
+            let context_start = addr.saturating_sub(64);
+            if reader.read_bytes(context_start, 256).is_ok() {
+                // Check for readable strings nearby
+                let mut strings_found = Vec::new();
+
+                // Check various offsets for strings
+                for string_offset in [-624i64, -560, -432, -288, -192, -128, -64, 0, 64].iter() {
+                    let check_addr = (*addr as i64 + string_offset) as u64;
+                    if let Ok(str_bytes) = reader.read_bytes(check_addr, 64) {
+                        let len = str_bytes.iter().position(|&b| b == 0).unwrap_or(64);
+                        if len > 2 && str_bytes[0] >= 0x20 && str_bytes[0] < 0x80 {
+                            let (decoded, _, _) = encoding_rs::SHIFT_JIS.decode(&str_bytes[..len]);
+                            let s = decoded.trim();
+                            if !s.is_empty() && s.len() >= 2 {
+                                strings_found.push((string_offset, s.to_string()));
+                            }
+                        }
+                    }
+                }
+
+                if !strings_found.is_empty() {
+                    for (off, s) in &strings_found {
+                        println!("      string at offset {}: {:?}", off, s);
+                    }
+                }
+
+                // Also check if this might be a song entry
+                // If 9003 is at offset 624, entry start would be addr - 624
+                let potential_entry_start = addr.saturating_sub(624);
+                if let Ok(entry) = reader.read_bytes(potential_entry_start, 1008) {
+                    let title_len = entry.iter().take(64).position(|&b| b == 0).unwrap_or(64);
+                    if title_len > 0 && entry[0] >= 0x20 {
+                        let (title, _, _) = encoding_rs::SHIFT_JIS.decode(&entry[..title_len]);
+                        let levels = &entry[288..298];
+                        println!("      -> if at offset 624: entry=0x{:X}, title={:?}, levels={:?}",
+                                 potential_entry_start, title.trim(), levels);
+                    }
+                }
+            }
+        }
+    }
+
     Ok(())
+}
+
+/// Parse a hex address string (with or without 0x prefix)
+fn parse_hex_address(s: &str) -> Result<u64> {
+    let s = s.trim_start_matches("0x").trim_start_matches("0X");
+    u64::from_str_radix(s, 16).map_err(|e| anyhow::anyhow!("Invalid hex address: {}", e))
+}
+
+/// Run the hexdump command
+fn run_hexdump_mode(address: u64, size: usize, ascii: bool, pid: Option<u32>) -> Result<()> {
+    let process = if let Some(pid) = pid {
+        ProcessHandle::open(pid)?
+    } else {
+        ProcessHandle::find_and_open()?
+    };
+
+    let reader = MemoryReader::new(&process);
+    let bytes = reader.read_bytes(address, size)?;
+
+    println!("Hexdump at 0x{:X} ({} bytes):", address, size);
+    println!();
+
+    for (i, chunk) in bytes.chunks(16).enumerate() {
+        let offset = i * 16;
+        print!("0x{:03X}: ", offset);
+
+        // Hex bytes
+        for (j, byte) in chunk.iter().enumerate() {
+            if j == 8 {
+                print!(" ");
+            }
+            print!("{:02X} ", byte);
+        }
+
+        // Padding for incomplete lines
+        if chunk.len() < 16 {
+            for j in chunk.len()..16 {
+                if j == 8 {
+                    print!(" ");
+                }
+                print!("   ");
+            }
+        }
+
+        // ASCII representation
+        if ascii {
+            print!(" |");
+            for byte in chunk {
+                if *byte >= 0x20 && *byte < 0x7F {
+                    print!("{}", *byte as char);
+                } else {
+                    print!(".");
+                }
+            }
+            for _ in chunk.len()..16 {
+                print!(" ");
+            }
+            print!("|");
+        }
+
+        println!();
+    }
+
+    Ok(())
+}
+
+/// Run the search command
+fn run_search_mode(
+    string: Option<String>,
+    i32_val: Option<i32>,
+    i16_val: Option<i16>,
+    pattern: Option<String>,
+    limit: usize,
+    pid: Option<u32>,
+) -> Result<()> {
+    let process = if let Some(pid) = pid {
+        ProcessHandle::open(pid)?
+    } else {
+        ProcessHandle::find_and_open()?
+    };
+
+    println!("Found process (PID: {}, Base: 0x{:X})", process.pid, process.base_address);
+
+    let reader = MemoryReader::new(&process);
+
+    // Determine search pattern
+    let (search_bytes, wildcard_mask): (Vec<u8>, Vec<bool>) = if let Some(ref s) = string {
+        // Encode string as Shift-JIS
+        let (encoded, _, _) = encoding_rs::SHIFT_JIS.encode(s);
+        let bytes = encoded.to_vec();
+        let mask = vec![false; bytes.len()];
+        println!("Searching for string: {:?} ({} bytes, Shift-JIS)", s, bytes.len());
+        (bytes, mask)
+    } else if let Some(val) = i32_val {
+        let bytes = val.to_le_bytes().to_vec();
+        let mask = vec![false; 4];
+        println!("Searching for i32: {} (0x{:08X})", val, val as u32);
+        (bytes, mask)
+    } else if let Some(val) = i16_val {
+        let bytes = val.to_le_bytes().to_vec();
+        let mask = vec![false; 2];
+        println!("Searching for i16: {} (0x{:04X})", val, val as u16);
+        (bytes, mask)
+    } else if let Some(ref pat) = pattern {
+        // Parse byte pattern (e.g., "00 04 07 0A" or "00 ?? 07")
+        let parts: Vec<&str> = pat.split_whitespace().collect();
+        let mut bytes = Vec::new();
+        let mut mask = Vec::new();
+        for part in parts {
+            if part == "??" {
+                bytes.push(0);
+                mask.push(true); // wildcard
+            } else {
+                let byte = u8::from_str_radix(part, 16)
+                    .map_err(|_| anyhow::anyhow!("Invalid hex byte: {}", part))?;
+                bytes.push(byte);
+                mask.push(false);
+            }
+        }
+        println!("Searching for pattern: {} ({} bytes)", pat, bytes.len());
+        (bytes, mask)
+    } else {
+        bail!("No search pattern specified. Use --string, --i32, --i16, or --pattern");
+    };
+
+    // Search in memory
+    let search_start = process.base_address + 0x1000000; // Start 16MB into the module
+    let search_end = process.base_address + (process.module_size as u64).min(0x5000000);
+    let chunk_size: usize = 4 * 1024 * 1024; // 4MB chunks
+
+    println!("Search range: 0x{:X} - 0x{:X}", search_start, search_end);
+    println!();
+
+    let mut found: Vec<u64> = Vec::new();
+    let mut offset = 0u64;
+
+    while search_start + offset < search_end && found.len() < limit {
+        let addr = search_start + offset;
+        let read_size = chunk_size.min((search_end - addr) as usize);
+
+        if let Ok(buffer) = reader.read_bytes(addr, read_size) {
+            for i in 0..=(buffer.len().saturating_sub(search_bytes.len())) {
+                let mut matches = true;
+                for (j, &byte) in search_bytes.iter().enumerate() {
+                    if !wildcard_mask[j] && buffer[i + j] != byte {
+                        matches = false;
+                        break;
+                    }
+                }
+                if matches {
+                    let found_addr = addr + i as u64;
+                    found.push(found_addr);
+
+                    println!("[{}] 0x{:X}", found.len(), found_addr);
+
+                    // Show context (32 bytes)
+                    if let Ok(context) = reader.read_bytes(found_addr, 32.min(buffer.len() - i)) {
+                        print!("     ");
+                        for byte in &context[..16.min(context.len())] {
+                            print!("{:02X} ", byte);
+                        }
+                        println!();
+                    }
+
+                    if found.len() >= limit {
+                        break;
+                    }
+                }
+            }
+        }
+
+        offset += chunk_size as u64;
+    }
+
+    println!();
+    println!("Found {} result(s)", found.len());
+    if found.len() >= limit {
+        println!("(limit reached, use --limit to increase)");
+    }
+
+    Ok(())
+}
+
+/// Run the offset command
+fn run_offset_mode(from: &str, to: &str) -> Result<()> {
+    let from_addr = parse_hex_address(from)?;
+    let to_addr = parse_hex_address(to)?;
+
+    let diff = if to_addr >= from_addr {
+        to_addr - from_addr
+    } else {
+        from_addr - to_addr
+    };
+
+    let sign = if to_addr >= from_addr { "" } else { "-" };
+
+    println!("From: 0x{:X}", from_addr);
+    println!("To:   0x{:X}", to_addr);
+    println!();
+    println!("Offset: {}{} (0x{:X})", sign, diff, diff);
+
+    Ok(())
+}
+
+/// Run the validate command
+fn run_validate_mode(target: ValidateTarget) -> Result<()> {
+    match target {
+        ValidateTarget::SongEntry { address, pid } => {
+            let addr = parse_hex_address(&address)?;
+            run_validate_song_entry(addr, pid)
+        }
+    }
+}
+
+/// Validate a song entry structure
+fn run_validate_song_entry(address: u64, pid: Option<u32>) -> Result<()> {
+    let process = if let Some(pid) = pid {
+        ProcessHandle::open(pid)?
+    } else {
+        ProcessHandle::find_and_open()?
+    };
+
+    let reader = MemoryReader::new(&process);
+
+    // Read entry data (1200 bytes for new structure)
+    const ENTRY_SIZE: usize = 1200;
+    let data = reader.read_bytes(address, ENTRY_SIZE)?;
+
+    println!("=== Song Entry Validation ===");
+    println!("Address: 0x{:X}", address);
+    println!("Entry size: {} bytes (0x{:X})", ENTRY_SIZE, ENTRY_SIZE);
+    println!();
+    println!("Fields:");
+
+    // Helper to decode Shift-JIS string
+    let decode_string = |offset: usize, max_len: usize| -> String {
+        let slice = &data[offset..offset + max_len];
+        let len = slice.iter().position(|&b| b == 0).unwrap_or(max_len);
+        if len == 0 {
+            return "(empty)".to_string();
+        }
+        let (decoded, _, _) = encoding_rs::SHIFT_JIS.decode(&slice[..len]);
+        decoded.trim().to_string()
+    };
+
+    // Helper to check if field looks valid
+    let check_string = |s: &str| -> &str {
+        if s == "(empty)" || s.chars().any(|c| c.is_control() && c != '\n' && c != '\r') {
+            "?"
+        } else {
+            "✓"
+        }
+    };
+
+    // Title at offset 0
+    let title = decode_string(0, 64);
+    println!("  title     @    0: {:?} {}", title, check_string(&title));
+
+    // Title English at offset 64
+    let title_en = decode_string(64, 64);
+    println!("  title_en  @   64: {:?} {}", title_en, check_string(&title_en));
+
+    // Genre at offset 128
+    let genre = decode_string(128, 64);
+    println!("  genre     @  128: {:?} {}", genre, check_string(&genre));
+
+    // Artist at offset 192
+    let artist = decode_string(192, 64);
+    println!("  artist    @  192: {:?} {}", artist, check_string(&artist));
+
+    // Levels at offset 480
+    let levels: Vec<u8> = data[480..490].to_vec();
+    let levels_valid = levels.iter().all(|&l| l <= 12);
+    println!("  levels    @  480: {:?} {}", levels, if levels_valid { "✓" } else { "?" });
+
+    // Song ID at offset 816
+    let song_id = i32::from_le_bytes([data[816], data[817], data[818], data[819]]);
+    let song_id_valid = song_id >= 1000 && song_id <= 90000;
+    println!("  song_id   @  816: {} {}", song_id, if song_id_valid { "✓" } else { "?" });
+
+    // Folder at offset 820
+    let folder = i32::from_le_bytes([data[820], data[821], data[822], data[823]]);
+    let folder_valid = folder >= 1 && folder <= 200;
+    println!("  folder    @  820: {} {}", folder, if folder_valid { "✓" } else { "?" });
+
+    // Total notes at offset 500 (10 x u16)
+    let total_notes: Vec<u16> = (0..10)
+        .map(|i| {
+            let off = 500 + i * 2;
+            u16::from_le_bytes([data[off], data[off + 1]])
+        })
+        .collect();
+    println!("  notes     @  500: {:?}", total_notes);
+
+    // BPM at offset 256
+    let bpm = decode_string(256, 64);
+    println!("  bpm       @  256: {:?}", bpm);
+
+    println!();
+
+    // Overall validation
+    let valid = !title.is_empty()
+        && title != "(empty)"
+        && song_id_valid
+        && levels_valid;
+    println!(
+        "Overall: {}",
+        if valid { "Valid song entry" } else { "Invalid or unknown structure" }
+    );
+
+    Ok(())
+}
+
+/// Scan with custom entry size
+fn run_custom_entry_size_scan(reader: &MemoryReader, start_addr: u64, range: usize, entry_size: usize) {
+    use encoding_rs::SHIFT_JIS;
+
+    println!();
+    println!("=== Custom Entry Size Scan ===");
+    println!("Entry size: {} bytes (0x{:X})", entry_size, entry_size);
+    println!();
+
+    let max_entries = (range / entry_size).min(5000);
+    let mut found_songs: Vec<(u64, u32, String, [u8; 10])> = Vec::new();
+    let mut consecutive_empty = 0;
+
+    for i in 0..max_entries {
+        let entry_addr = start_addr + (i * entry_size) as u64;
+
+        // Read entry
+        let data = match reader.read_bytes(entry_addr, entry_size) {
+            Ok(d) => d,
+            Err(_) => {
+                consecutive_empty += 1;
+                if consecutive_empty >= 10 {
+                    break;
+                }
+                continue;
+            }
+        };
+
+        // Try to extract title (offset 0, 64 bytes)
+        let title_len = data.iter().take(64).position(|&b| b == 0).unwrap_or(64);
+        if title_len == 0 || data[0] < 0x20 {
+            consecutive_empty += 1;
+            if consecutive_empty >= 20 {
+                break;
+            }
+            continue;
+        }
+
+        let (title, _, _) = SHIFT_JIS.decode(&data[..title_len]);
+        let title = title.trim();
+        if title.is_empty() {
+            consecutive_empty += 1;
+            if consecutive_empty >= 20 {
+                break;
+            }
+            continue;
+        }
+
+        consecutive_empty = 0;
+
+        // Try to find song_id at common offsets
+        let mut song_id = 0u32;
+        let mut levels = [0u8; 10];
+
+        // Try offsets based on entry size
+        let id_offsets: &[usize] = match entry_size {
+            1200 => &[816, 624], // New structure, old structure
+            1008 => &[624, 816],
+            _ => &[624, 816, entry_size - 384, entry_size - 192],
+        };
+
+        for &offset in id_offsets {
+            if offset + 4 <= entry_size {
+                let id = i32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]]);
+                if id >= 1000 && id <= 90000 {
+                    song_id = id as u32;
+                    break;
+                }
+            }
+        }
+
+        // Try to find levels
+        let level_offsets: &[usize] = match entry_size {
+            1200 => &[480, 288],
+            1008 => &[288, 480],
+            _ => &[288, 480, 256],
+        };
+
+        for &offset in level_offsets {
+            if offset + 10 <= entry_size {
+                let slice = &data[offset..offset + 10];
+                if slice.iter().all(|&b| b <= 12) && slice.iter().any(|&b| b > 0) {
+                    for (j, &b) in slice.iter().enumerate() {
+                        levels[j] = b;
+                    }
+                    break;
+                }
+            }
+        }
+
+        found_songs.push((entry_addr, song_id, title.to_string(), levels));
+    }
+
+    println!("Found {} entries with titles", found_songs.len());
+    println!();
+
+    // Display results
+    for (i, (addr, id, title, levels)) in found_songs.iter().take(30).enumerate() {
+        let id_str = if *id > 0 {
+            format!("{:5}", id)
+        } else {
+            "    ?".to_string()
+        };
+        println!(
+            "[{:3}] 0x{:X}: id={}, levels={:?}, title={:?}",
+            i, addr, id_str, levels, title
+        );
+    }
+
+    if found_songs.len() > 30 {
+        println!("... and {} more", found_songs.len() - 30);
+    }
+
+    // Statistics
+    let with_id = found_songs.iter().filter(|(_, id, _, _)| *id > 0).count();
+    let with_levels = found_songs.iter().filter(|(_, _, _, l)| l.iter().any(|&x| x > 0)).count();
+    println!();
+    println!("Statistics:");
+    println!("  Entries with valid song_id: {}", with_id);
+    println!("  Entries with valid levels:  {}", with_levels);
 }
 
 /// Run the scan command
@@ -1154,6 +1928,7 @@ fn run_scan_mode(
     range: usize,
     tsv_file: Option<&str>,
     output: Option<&str>,
+    entry_size: Option<usize>,
 ) -> Result<()> {
     let current_version = env!("CARGO_PKG_VERSION");
     println!("Reflux-RS {} - Scan Mode", current_version);
@@ -1198,6 +1973,13 @@ fn run_scan_mode(
     };
 
     // Perform scan
+    if let Some(size) = entry_size {
+        // Custom entry size scan
+        println!("Scanning with entry size {} bytes from 0x{:X}...", size, offsets.song_list);
+        run_custom_entry_size_scan(&reader, offsets.song_list, range, size);
+        return Ok(());
+    }
+
     println!("Scanning {} bytes from 0x{:X}...", range, offsets.song_list);
     let scan_result = ScanResult::scan(&reader, offsets.song_list, range, tsv_db.as_ref());
 
