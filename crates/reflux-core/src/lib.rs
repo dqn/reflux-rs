@@ -8,6 +8,7 @@
 //! - Offset detection via signature scanning
 //! - Score tracking and session management
 
+pub mod debug;
 pub mod error;
 pub mod game;
 pub mod memory;
@@ -24,7 +25,7 @@ pub use game::{
     fetch_song_database, fetch_song_database_with_fixes, get_unlock_state_for_difficulty,
     get_unlock_states,
 };
-pub use memory::{MemoryReader, ProcessHandle};
+pub use memory::{MemoryReader, ProcessHandle, ReadMemory};
 pub use offset::{
     CodeSignature, InteractiveSearchResult, JudgeInput, OffsetDump, OffsetSearcher,
     OffsetSignatureEntry, OffsetSignatureSet, OffsetsCollection, SearchPrompter, SearchResult,
@@ -36,3 +37,6 @@ pub use storage::{
     format_tracker_tsv_header,
 };
 pub use stream::StreamOutput;
+
+// Debug utilities
+pub use debug::{DumpInfo, MemoryDump, OffsetStatus, OffsetValidation, ScanResult, ScannedSong, StatusInfo};
