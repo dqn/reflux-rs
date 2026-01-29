@@ -22,6 +22,58 @@ use crate::storage::format_play_data_console;
 
 use super::Reflux;
 
+/// Read a value from memory with a default on error.
+///
+/// This helper simplifies error handling for non-critical reads.
+fn read_with_default<T, F>(f: F, default: T, context: &str) -> T
+where
+    F: FnOnce() -> Result<T>,
+{
+    match f() {
+        Ok(v) => v,
+        Err(e) => {
+            warn!("Failed to read {}: {}", context, e);
+            default
+        }
+    }
+}
+
+/// Check if memory is accessible with retry logic.
+///
+/// Uses exponential backoff and checks process liveness between retries.
+fn verify_memory_access(reader: &MemoryReader, process: &ProcessHandle) -> bool {
+    for attempt in 0..retry::MAX_READ_RETRIES {
+        match reader.read_bytes(process.base_address, 4) {
+            Ok(_) => return true,
+            Err(e) => {
+                // Re-check process status before retrying
+                if !process.is_alive() {
+                    debug!("Process terminated during retry: {}", e);
+                    return false;
+                }
+
+                if attempt < retry::MAX_READ_RETRIES - 1 {
+                    let delay = retry::RETRY_DELAYS_MS[attempt as usize];
+                    debug!(
+                        "Memory read failed (attempt {}/{}, retry in {}ms): {}",
+                        attempt + 1,
+                        retry::MAX_READ_RETRIES,
+                        delay,
+                        e
+                    );
+                    thread::sleep(Duration::from_millis(delay));
+                } else {
+                    debug!(
+                        "Memory read failed after {} retries: {}",
+                        retry::MAX_READ_RETRIES, e
+                    );
+                }
+            }
+        }
+    }
+    false
+}
+
 impl Reflux {
     /// Run the main tracking loop
     ///
@@ -54,40 +106,7 @@ impl Reflux {
             }
 
             // Step 2: Verify memory access with retry mechanism (exponential backoff)
-            let mut memory_accessible = false;
-            for attempt in 0..retry::MAX_READ_RETRIES {
-                match reader.read_bytes(process.base_address, 4) {
-                    Ok(_) => {
-                        memory_accessible = true;
-                        break;
-                    }
-                    Err(e) => {
-                        // Re-check process status before retrying
-                        if !process.is_alive() {
-                            debug!("Process terminated during retry: {}", e);
-                            break;
-                        }
-
-                        if attempt < retry::MAX_READ_RETRIES - 1 {
-                            let delay = retry::RETRY_DELAYS_MS[attempt as usize];
-                            debug!(
-                                "Memory read failed (attempt {}/{}, retry in {}ms): {}",
-                                attempt + 1,
-                                retry::MAX_READ_RETRIES,
-                                delay,
-                                e
-                            );
-                            thread::sleep(Duration::from_millis(delay));
-                        } else {
-                            debug!(
-                                "Memory read failed after {} retries: {}",
-                                retry::MAX_READ_RETRIES, e
-                            );
-                        }
-                    }
-                }
-            }
-            if !memory_accessible {
+            if !verify_memory_access(&reader, process) {
                 break;
             }
 
@@ -107,34 +126,27 @@ impl Reflux {
     }
 
     fn detect_game_state(&mut self, reader: &MemoryReader) -> Result<GameState> {
-        // Read markers for state detection with detailed error logging
-        let state_marker_1 = match reader.read_i32(self.offsets.judge_data + judge::STATE_MARKER_1)
-        {
-            Ok(v) => v,
-            Err(e) => {
-                warn!("Failed to read state_marker_1: {}", e);
-                0
-            }
-        };
-        let state_marker_2 = match reader.read_i32(self.offsets.judge_data + judge::STATE_MARKER_2)
-        {
-            Ok(v) => v,
-            Err(e) => {
-                warn!("Failed to read state_marker_2: {}", e);
-                0
-            }
-        };
-        let song_select_marker = match reader.read_i32(
-            self.offsets
-                .play_settings
-                .wrapping_sub(settings::SONG_SELECT_MARKER),
-        ) {
-            Ok(v) => v,
-            Err(e) => {
-                warn!("Failed to read song_select_marker: {}", e);
-                0
-            }
-        };
+        let state_marker_1 = read_with_default(
+            || reader.read_i32(self.offsets.judge_data + judge::STATE_MARKER_1),
+            0,
+            "state_marker_1",
+        );
+        let state_marker_2 = read_with_default(
+            || reader.read_i32(self.offsets.judge_data + judge::STATE_MARKER_2),
+            0,
+            "state_marker_2",
+        );
+        let song_select_marker = read_with_default(
+            || {
+                reader.read_i32(
+                    self.offsets
+                        .play_settings
+                        .wrapping_sub(settings::SONG_SELECT_MARKER),
+                )
+            },
+            0,
+            "song_select_marker",
+        );
 
         Ok(self
             .state_detector
