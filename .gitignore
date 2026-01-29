@@ -7,3 +7,8 @@ bash.exe.stackdump
 offsets.txt
 sessions/
 tracker.tsv
+
+# Debug output files
+dump_output.json
+explore_output.txt
+tracker_log.txt
