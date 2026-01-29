@@ -215,7 +215,7 @@ impl Reflux {
                     }
                     // Data not ready yet, continue polling
                     if attempt == POLL_DELAYS_MS.len() - 1 {
-                        warn!(
+                        debug!(
                             "Play data notes count is zero after {} attempts",
                             POLL_DELAYS_MS.len()
                         );
