@@ -79,6 +79,32 @@ reflux offset --from 0x1431B08A0 --to 0x1431B0BD0
 reflux validate song-entry --address 0x1431B08A0
 ```
 
+## データエクスポート
+
+全曲のプレイデータ（スコア、ランプ、ミスカウント、DJ ポイント等）をエクスポートする。
+
+```bash
+# TSV形式でファイルに出力（デフォルト）
+reflux export -o scores.tsv
+
+# JSON形式でファイルに出力
+reflux export -o scores.json -f json
+
+# 標準出力にTSV出力
+reflux export
+
+# 標準出力にJSON出力
+reflux export -f json
+```
+
+### オプション
+
+| オプション          | 説明                                   |
+| ------------------- | -------------------------------------- |
+| `-o, --output`      | 出力ファイルパス（省略時は標準出力）   |
+| `-f, --format`      | 出力形式: `tsv`（デフォルト）/ `json`  |
+| `--pid`             | プロセスID（省略時は自動検出）         |
+
 ## アーキテクチャ
 
 ### reflux-core モジュール構成
