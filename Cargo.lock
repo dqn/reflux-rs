@@ -534,6 +534,7 @@ dependencies = [
  "crossterm",
  "ctrlc",
  "reflux-core",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
 ]
