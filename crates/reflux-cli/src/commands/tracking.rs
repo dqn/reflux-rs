@@ -117,18 +117,17 @@ fn validate_or_search_offsets(
     shutdown: &ShutdownSignal,
 ) -> Result<Option<OffsetsCollection>> {
     // Try to use cached offsets first (if not loading from file)
-    if !offsets_from_file {
-        if let Some(version) = game_version {
-            if let Some(cached_offsets) = try_load_cached_offsets(version) {
-                // Validate cached offsets still work
-                let searcher = OffsetSearcher::new(reader);
-                if searcher.validate_basic_memory_access(&cached_offsets) {
-                    info!("Using cached offsets (validated)");
-                    return Ok(Some(cached_offsets));
-                } else {
-                    info!("Cached offsets invalid, performing fresh search...");
-                }
-            }
+    if !offsets_from_file
+        && let Some(version) = game_version
+        && let Some(cached_offsets) = try_load_cached_offsets(version)
+    {
+        // Validate cached offsets still work
+        let searcher = OffsetSearcher::new(reader);
+        if searcher.validate_basic_memory_access(&cached_offsets) {
+            info!("Using cached offsets (validated)");
+            return Ok(Some(cached_offsets));
+        } else {
+            info!("Cached offsets invalid, performing fresh search...");
         }
     }
 

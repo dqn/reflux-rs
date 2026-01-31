@@ -72,7 +72,8 @@ pub const MAX_SONG_ID: i32 = 50000;
 /// Historical values:
 /// - Version 1 (2025122400): 0x2ACEE8
 /// - Version 2 (2026012800): 0x2ACFA8
-/// Using Version 2 value as it's the current version.
+///
+///   Using Version 2 value as it's the current version.
 pub const JUDGE_TO_PLAY_SETTINGS: u64 = 0x2ACFA8;
 
 /// Search range for playSettings (±512 bytes)
@@ -91,7 +92,8 @@ pub const JUDGE_TO_SONG_LIST: u64 = 0x94E3C8;
 /// Historical values:
 /// - Version 1 (2025122400): 0x2C0 (704 bytes)
 /// - Version 2 (2026012800): 0x2A0 (672 bytes)
-/// Using Version 2 value as it's the current version.
+///
+///   Using Version 2 value as it's the current version.
 pub const PLAY_SETTINGS_TO_PLAY_DATA: u64 = 0x2A0;
 
 /// Search range for playData (±256 bytes)

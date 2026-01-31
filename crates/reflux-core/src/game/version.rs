@@ -35,7 +35,11 @@ pub fn find_game_version<R: ReadMemory>(reader: &R, base_address: u64) -> Result
     }
 
     // Phase 2: Full scan if quick search failed
-    Ok(search_version_in_range(reader, base_address, MAX_SEARCH_SIZE))
+    Ok(search_version_in_range(
+        reader,
+        base_address,
+        MAX_SEARCH_SIZE,
+    ))
 }
 
 /// Search for version string in a specific memory range

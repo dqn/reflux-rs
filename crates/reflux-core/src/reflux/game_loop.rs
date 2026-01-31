@@ -190,11 +190,18 @@ impl Reflux {
                         + play_data.judge.bad
                         + play_data.judge.poor;
 
+                    // Validate song_id matches current_playing (if available)
+                    let song_id_valid = match self.current_playing {
+                        Some((expected_id, _)) => play_data.chart.song_id == expected_id,
+                        None => true, // No reference, accept any
+                    };
+
                     debug!(
-                        "Attempt {}: song_id={}, total_notes={}, judge: P={} G={} Go={} B={} Po={}",
+                        "Attempt {}: song_id={}, total_notes={}, song_id_valid={}, judge: P={} G={} Go={} B={} Po={}",
                         attempt + 1,
                         play_data.chart.song_id,
                         total_notes,
+                        song_id_valid,
                         play_data.judge.pgreat,
                         play_data.judge.great,
                         play_data.judge.good,
@@ -202,18 +209,19 @@ impl Reflux {
                         play_data.judge.poor
                     );
 
-                    if total_notes > 0 {
+                    if total_notes > 0 && song_id_valid {
                         info!(
                             "Play result captured: {} ({}) - EX: {}",
                             play_data.chart.title, play_data.chart.song_id, play_data.ex_score
                         );
                         self.process_play_result(&play_data);
+                        self.current_playing = None; // Clear after processing
                         return;
                     }
                     // Data not ready yet, continue polling
                     if attempt == polling::POLL_DELAYS_MS.len() - 1 {
                         debug!(
-                            "Play data notes count is zero after {} attempts",
+                            "Play data notes count is zero or song_id mismatch after {} attempts",
                             polling::POLL_DELAYS_MS.len()
                         );
                     }
@@ -229,6 +237,9 @@ impl Reflux {
                 }
             }
         }
+
+        // Clear current_playing even if we failed to capture data
+        self.current_playing = None;
     }
 
     /// Process and save play result data
@@ -311,8 +322,24 @@ impl Reflux {
     }
 
     /// Handle transition to playing state
-    fn handle_playing(&mut self, _reader: &MemoryReader) {
-        // No streaming output in this version
+    ///
+    /// Captures current chart selection when entering Playing state.
+    /// This is used for cross-validation on ResultScreen to ensure
+    /// we're reading the correct play data.
+    fn handle_playing(&mut self, reader: &MemoryReader) {
+        match self.fetch_current_chart(reader) {
+            Ok((song_id, difficulty)) => {
+                debug!(
+                    "Entering Playing state: song_id={}, difficulty={:?}",
+                    song_id, difficulty
+                );
+                self.current_playing = Some((song_id, difficulty));
+            }
+            Err(e) => {
+                warn!("Failed to fetch current chart on Playing: {}", e);
+                // Keep previous value if any, or None
+            }
+        }
     }
 
     /// Poll for unlock state changes
@@ -343,8 +370,10 @@ impl Reflux {
         self.game_data.unlock_state = current_state;
     }
 
-    /// Fetch current chart selection (for future stream output feature)
-    #[allow(dead_code)]
+    /// Fetch current chart selection from memory
+    ///
+    /// Used during Playing state to capture what chart is being played,
+    /// enabling cross-validation when reading play data on ResultScreen.
     fn fetch_current_chart(&self, reader: &MemoryReader) -> Result<(u32, Difficulty)> {
         let song_id = reader.read_i32(self.offsets.current_song)? as u32;
         let diff = reader.read_i32(self.offsets.current_song + 4)?;
