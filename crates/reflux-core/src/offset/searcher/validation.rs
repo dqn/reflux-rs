@@ -205,6 +205,11 @@ pub trait OffsetValidation: ReadMemory {
     }
 
     /// Count how many songs can be read from a given song list address
+    ///
+    /// This function counts songs until:
+    /// - MIN_EXPECTED_SONGS (1000) is reached (early termination for performance)
+    /// - MAX_SONGS_TO_CHECK (5000) is reached
+    /// - Too many consecutive failures occur
     fn count_songs_at_address(&self, song_list_addr: u64) -> usize
     where
         Self: Sized,
@@ -217,6 +222,14 @@ pub trait OffsetValidation: ReadMemory {
         const MAX_CONSECUTIVE_FAILURES: u32 = 10;
 
         while count < MAX_SONGS_TO_CHECK {
+            // Early termination: once we have enough songs, no need to count more
+            if count >= MIN_EXPECTED_SONGS {
+                debug!(
+                    "    Reached {} songs, stopping early (enough for validation)",
+                    count
+                );
+                return count;
+            }
             let address = song_list_addr + current_position;
 
             match SongInfo::read_from_memory(self, address) {

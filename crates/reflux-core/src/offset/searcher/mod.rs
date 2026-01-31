@@ -97,8 +97,12 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         };
 
         // Phase 1: SongList (anchor)
-        debug!("Phase 1: Searching SongList via signatures...");
-        offsets.song_list = self.search_song_list_by_signature(signatures)?;
+        // NOTE: Signature search is disabled because it requires 128MB code scan
+        // and existing signatures don't work on Version 2 (2026012800+).
+        // Pattern search ("5.1.1." version string) is reliable and much faster.
+        debug!("Phase 1: Searching SongList via pattern search...");
+        let base = self.reader.base_address();
+        offsets.song_list = self.search_song_list_offset(base)?;
         debug!("  SongList: 0x{:X}", offsets.song_list);
 
         // Phase 2: JudgeData (relative search from SongList)
@@ -935,6 +939,13 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         })
     }
 
+    /// Search for song list using code signatures (AOB scan)
+    ///
+    /// NOTE: This method is currently unused because signature search requires
+    /// 128MB code scan and existing signatures don't work on Version 2 (2026012800+).
+    /// Pattern search ("5.1.1." version string) is used instead.
+    /// Kept for potential future use when stable signatures are discovered.
+    #[allow(dead_code)]
     fn search_song_list_by_signature(&mut self, signatures: &OffsetSignatureSet) -> Result<u64> {
         let entry = signatures.entry("songList").ok_or_else(|| {
             Error::offset_search_failed("Signature entry 'songList' not found".to_string())
