@@ -1082,6 +1082,25 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
     fn search_judge_data_near_song_list(&self, song_list: u64) -> Result<u64> {
         let expected = song_list.wrapping_sub(JUDGE_TO_SONG_LIST);
+
+        // First, try to find a candidate where both JudgeData and the inferred
+        // CurrentSong position are valid. This cross-validation is more reliable.
+        let result = self.search_near_expected(expected, JUDGE_DATA_SEARCH_RANGE, |this, addr| {
+            if !this.reader.validate_judge_data_candidate(addr) {
+                return false;
+            }
+            // Cross-validate: check if CurrentSong at expected relative position is valid
+            let inferred_current_song = addr.wrapping_add(JUDGE_TO_CURRENT_SONG);
+            this.reader
+                .validate_current_song_address(inferred_current_song)
+                .unwrap_or(false)
+        });
+
+        if let Some(addr) = result {
+            return Ok(addr);
+        }
+
+        // Fallback: just validate JudgeData structure itself
         self.search_near_expected(expected, JUDGE_DATA_SEARCH_RANGE, |this, addr| {
             this.reader.validate_judge_data_candidate(addr)
         })

@@ -18,16 +18,47 @@ use super::utils::is_power_of_two;
 pub trait OffsetValidation: ReadMemory {
     /// Validate if the given address contains valid JudgeData
     ///
-    /// Checks that state markers are in valid range (0-100)
+    /// Checks:
+    /// 1. State markers are in valid range (0-100)
+    /// 2. First 72 bytes (judgment values) are either all zeros or all valid
+    ///
+    /// The judgment region contains 18 i32 values (P1/P2 judgments, combo breaks,
+    /// fast/slow counts, measure end markers). In song select state, these are
+    /// all zeros. During/after play, they contain valid counts.
     fn validate_judge_data_candidate(&self, addr: u64) -> bool {
         if !addr.is_multiple_of(4) {
             return false;
         }
 
+        // Check state markers (must be 0-100)
         let marker1 = self.read_i32(addr + judge::STATE_MARKER_1).unwrap_or(-1);
         let marker2 = self.read_i32(addr + judge::STATE_MARKER_2).unwrap_or(-1);
+        if !(0..=100).contains(&marker1) || !(0..=100).contains(&marker2) {
+            return false;
+        }
 
-        (0..=100).contains(&marker1) && (0..=100).contains(&marker2)
+        // Read the judgment region (first 72 bytes = 18 i32 values)
+        let Ok(bytes) = self.read_bytes(addr, judge::INITIAL_ZERO_SIZE) else {
+            return false;
+        };
+
+        // Check if all bytes are zero (song select state)
+        let all_zeros = bytes.iter().all(|&b| b == 0);
+        if all_zeros {
+            return true;
+        }
+
+        // If not all zeros, verify each i32 value is in valid range
+        // Each judgment value should be 0-3000 (MAX_NOTES), combo breaks 0-500, etc.
+        for chunk in bytes.chunks_exact(4) {
+            let value = i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            // All values should be non-negative and reasonably bounded
+            if !(0..=judge::MAX_NOTES).contains(&value) {
+                return false;
+            }
+        }
+
+        true
     }
 
     /// Validate if the given address contains valid PlaySettings
