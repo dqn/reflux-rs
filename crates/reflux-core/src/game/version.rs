@@ -13,17 +13,40 @@ const CHUNK_SIZE: usize = 1_000_000;
 /// Maximum search size (80MB total)
 const MAX_SEARCH_SIZE: usize = 80_000_000;
 
+/// Expected offset for version string (approximately 4-5MB from base)
+/// Historical analysis shows the current version is typically found early in memory.
+const EXPECTED_VERSION_OFFSET: usize = 4_000_000;
+
 /// Find the game version string from process memory
 ///
-/// Searches for "P2D:J:B:A:YYYYMMDDNN" pattern in the first 80MB of memory.
-/// Uses chunked reading (1MB at a time) to reduce memory usage.
+/// Searches for "P2D:J:B:A:YYYYMMDDNN" pattern using a two-phase approach:
+/// 1. First, search in the expected region (around 4-5MB from base)
+/// 2. If not found, fall back to full 80MB scan
+///
 /// Note: The first two occurrences are old 2016 builds, so we return the last found.
 pub fn find_game_version<R: ReadMemory>(reader: &R, base_address: u64) -> Result<Option<String>> {
-    let end_addr = base_address + MAX_SEARCH_SIZE as u64;
-    let mut current_addr = base_address;
-    let mut last_found: Option<String> = None;
+    // Phase 1: Quick search in expected region (4-8MB from base)
+    // This covers most cases without a full 80MB scan
+    let quick_search_start = base_address + EXPECTED_VERSION_OFFSET as u64;
+    let quick_search_size = 4 * CHUNK_SIZE; // 4MB
 
-    // Buffer to handle version strings that span chunk boundaries
+    if let Some(version) = search_version_in_range(reader, quick_search_start, quick_search_size) {
+        return Ok(Some(version));
+    }
+
+    // Phase 2: Full scan if quick search failed
+    Ok(search_version_in_range(reader, base_address, MAX_SEARCH_SIZE))
+}
+
+/// Search for version string in a specific memory range
+fn search_version_in_range<R: ReadMemory>(
+    reader: &R,
+    start_addr: u64,
+    max_size: usize,
+) -> Option<String> {
+    let end_addr = start_addr + max_size as u64;
+    let mut current_addr = start_addr;
+    let mut last_found: Option<String> = None;
     let mut overlap_buffer = String::new();
 
     while current_addr < end_addr {
@@ -35,13 +58,9 @@ pub fn find_game_version<R: ReadMemory>(reader: &R, base_address: u64) -> Result
             Err(_) => break,
         };
 
-        // Convert to string (ASCII only for version search)
         let text = decode_shift_jis(&chunk);
-
-        // Combine with overlap from previous chunk to handle boundary cases
         let search_text = format!("{}{}", overlap_buffer, text);
 
-        // Search for version prefix
         for i in 0..search_text.len().saturating_sub(VERSION_LENGTH) {
             if search_text[i..].starts_with(VERSION_PREFIX)
                 && i + VERSION_LENGTH <= search_text.len()
@@ -53,8 +72,6 @@ pub fn find_game_version<R: ReadMemory>(reader: &R, base_address: u64) -> Result
             }
         }
 
-        // Keep the last VERSION_LENGTH-1 bytes for next iteration
-        // to handle version strings that span chunk boundaries
         if text.len() >= VERSION_LENGTH {
             overlap_buffer = text[text.len() - VERSION_LENGTH + 1..].to_string();
         } else {
@@ -64,7 +81,7 @@ pub fn find_game_version<R: ReadMemory>(reader: &R, base_address: u64) -> Result
         current_addr += chunk_size as u64;
     }
 
-    Ok(last_found)
+    last_found
 }
 
 /// Check if the game version matches the offsets version

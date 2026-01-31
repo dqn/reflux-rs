@@ -100,9 +100,11 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         // NOTE: Signature search is disabled because it requires 128MB code scan
         // and existing signatures don't work on Version 2 (2026012800+).
         // Pattern search ("5.1.1." version string) is reliable and much faster.
+        // Start search near the expected location for faster detection.
         debug!("Phase 1: Searching SongList via pattern search...");
         let base = self.reader.base_address();
-        offsets.song_list = self.search_song_list_offset(base)?;
+        let song_list_hint = base + EXPECTED_SONG_LIST_OFFSET;
+        offsets.song_list = self.search_song_list_offset(song_list_hint)?;
         debug!("  SongList: 0x{:X}", offsets.song_list);
 
         // Phase 2: JudgeData (relative search from SongList)

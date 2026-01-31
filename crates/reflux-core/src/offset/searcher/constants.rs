@@ -42,6 +42,12 @@ pub const INITIAL_SEARCH_SIZE: usize = 2 * 1024 * 1024;
 /// Maximum half-window size for memory search (total read size is 2x)
 pub const MAX_SEARCH_SIZE: usize = 300 * 1024 * 1024;
 
+/// Expected offset from base address to SongList (approximately 49MB)
+///
+/// Historical analysis shows SongList is typically at base + 0x3100000 to 0x3200000.
+/// Using this as a hint allows starting the search near the expected location.
+pub const EXPECTED_SONG_LIST_OFFSET: u64 = 0x3180000;
+
 /// Code scan chunk size for signature search (4MB)
 pub const CODE_SCAN_CHUNK_SIZE: usize = 4 * 1024 * 1024;
 
