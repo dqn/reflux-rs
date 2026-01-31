@@ -529,12 +529,18 @@ fn format_colored_grade(grade: &Grade) -> String {
     let name = grade.short_name();
     match grade {
         Grade::NoPlay => name.dimmed().to_string(),
-        Grade::F => name.red().to_string(),
-        Grade::E | Grade::D => name.truecolor(255, 165, 0).to_string(), // orange
-        Grade::C | Grade::B => name.yellow().to_string(),
-        Grade::A => name.green().to_string(),
-        Grade::Aa => name.cyan().to_string(),
-        Grade::Aaa => name.yellow().bold().to_string(),
+        // F～B: blue to cyan gradient
+        Grade::F => name.truecolor(0, 100, 255).to_string(),
+        Grade::E => name.truecolor(0, 150, 255).to_string(),
+        Grade::D => name.truecolor(0, 180, 255).to_string(),
+        Grade::C => name.truecolor(0, 210, 255).to_string(),
+        Grade::B => name.truecolor(0, 240, 255).to_string(),
+        // A: cyan
+        Grade::A => name.truecolor(0, 255, 255).to_string(),
+        // AA: silver
+        Grade::Aa => name.truecolor(192, 192, 192).to_string(),
+        // AAA: gold
+        Grade::Aaa => name.truecolor(255, 200, 0).bold().to_string(),
     }
 }
 
