@@ -32,7 +32,7 @@ pub fn run(offsets_file: Option<&str>) -> Result<()> {
             {
                 error!("Tracking session error: {}", e);
             }
-            debug!("Process disconnected, waiting for reconnect...");
+            info!("Process disconnected, waiting for reconnect...");
         }
 
         if shutdown.wait(Duration::from_secs(5)) {
@@ -95,13 +95,16 @@ fn wait_for_process(shutdown: &ShutdownSignal) -> Option<ProcessHandle> {
 
     match ProcessHandle::find_and_open() {
         Ok(process) => {
-            debug!(
-                "Found INFINITAS process (base: {:#x})",
-                process.base_address
+            info!(
+                "Connected to INFINITAS (PID: {}, base: {:#x})",
+                process.pid, process.base_address
             );
             Some(process)
         }
-        Err(_) => None,
+        Err(e) => {
+            debug!("Process not found: {}", e);
+            None
+        }
     }
 }
 
