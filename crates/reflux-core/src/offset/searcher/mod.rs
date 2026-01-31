@@ -1115,6 +1115,25 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
     fn search_play_settings_near_judge_data(&self, judge_data: u64) -> Result<u64> {
         let expected = judge_data.wrapping_sub(JUDGE_TO_PLAY_SETTINGS);
+
+        // First, try to find a candidate where both PlaySettings and the inferred
+        // PlayData position are valid. This cross-validation is more reliable.
+        let result = self.search_near_expected(expected, PLAY_SETTINGS_SEARCH_RANGE, |this, addr| {
+            if this.reader.validate_play_settings_at(addr).is_none() {
+                return false;
+            }
+            // Cross-validate: check if PlayData at expected relative position is valid
+            let inferred_play_data = addr.wrapping_add(PLAY_SETTINGS_TO_PLAY_DATA);
+            this.reader
+                .validate_play_data_address(inferred_play_data)
+                .unwrap_or(false)
+        });
+
+        if let Some(addr) = result {
+            return Ok(addr);
+        }
+
+        // Fallback: just validate PlaySettings structure itself
         self.search_near_expected(expected, PLAY_SETTINGS_SEARCH_RANGE, |this, addr| {
             this.reader.validate_play_settings_at(addr).is_some()
         })

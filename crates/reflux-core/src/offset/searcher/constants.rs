@@ -67,27 +67,32 @@ pub const MAX_SONG_ID: i32 = 50000;
 // Relative Offsets (derived from historical analysis of 9 versions)
 // ============================================================================
 
-/// Expected offset: judgeData - playSettings ≈ 0x2ACEE8
+/// Expected offset: judgeData - playSettings ≈ 0x2ACFA8
 ///
-/// Historical variation: ±0x100 (256 bytes)
-pub const JUDGE_TO_PLAY_SETTINGS: u64 = 0x2ACEE8;
+/// Historical values:
+/// - Version 1 (2025122400): 0x2ACEE8
+/// - Version 2 (2026012800): 0x2ACFA8
+/// Using Version 2 value as it's the current version.
+pub const JUDGE_TO_PLAY_SETTINGS: u64 = 0x2ACFA8;
 
-/// Search range for playSettings (±8KB)
+/// Search range for playSettings (±512 bytes)
 ///
-/// This is ~32x the measured variation to ensure reliable detection.
-pub const PLAY_SETTINGS_SEARCH_RANGE: usize = 0x2000;
+/// Historical variation between versions is ~192 bytes (0xC0).
+/// Using 512 bytes to cover with some margin while avoiding false positives.
+pub const PLAY_SETTINGS_SEARCH_RANGE: usize = 0x200;
 
 /// Expected offset: songList - judgeData ≈ 0x94E3C8
 ///
 /// Historical variation: ±0x600 (1.5KB)
 pub const JUDGE_TO_SONG_LIST: u64 = 0x94E3C8;
 
-/// Expected offset: playData - playSettings ≈ 0x2C0
+/// Expected offset: playData - playSettings ≈ 0x2A0
 ///
-/// Historical variation: ±0x10 (16 bytes)
-/// - 2025122400 and later: 0x2C0 (704 bytes)
-/// - Before 2025122400: 0x2B0 (688 bytes)
-pub const PLAY_SETTINGS_TO_PLAY_DATA: u64 = 0x2C0;
+/// Historical values:
+/// - Version 1 (2025122400): 0x2C0 (704 bytes)
+/// - Version 2 (2026012800): 0x2A0 (672 bytes)
+/// Using Version 2 value as it's the current version.
+pub const PLAY_SETTINGS_TO_PLAY_DATA: u64 = 0x2A0;
 
 /// Search range for playData (±256 bytes)
 ///
