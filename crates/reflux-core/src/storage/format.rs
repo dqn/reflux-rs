@@ -12,7 +12,7 @@ use crate::game::{
     Difficulty, Grade, Lamp, PlayData, SongInfo, UnlockData, UnlockType, calculate_dj_points,
     get_unlock_state_for_difficulty,
 };
-use crate::storage::ScoreMap;
+use crate::storage::{ScoreData, ScoreMap};
 
 pub fn format_tsv_header() -> String {
     [
@@ -437,8 +437,9 @@ pub fn export_song_list<P: AsRef<Path>>(path: P, song_db: &HashMap<u32, SongInfo
 
 /// Format play data for console display with colored output
 ///
-/// Returns a multi-line string with a boxed format
-pub fn format_play_data_console(play_data: &PlayData) -> String {
+/// Returns a multi-line string with a boxed format.
+/// If `personal_best` is provided, shows improvement indicators.
+pub fn format_play_data_console(play_data: &PlayData, personal_best: Option<&ScoreData>) -> String {
     let mut output = String::new();
 
     // Build title line: "冥 [SPA Lv.12]"
@@ -464,13 +465,42 @@ pub fn format_play_data_console(play_data: &PlayData) -> String {
     // Build option string
     let option = play_data.settings.style.as_str();
 
-    // Build data lines
-    let lamp_colored = format_colored_lamp(&play_data.lamp);
-    let grade_colored = format_colored_grade(&play_data.grade);
+    // Compare with personal best
+    let comparison = compare_with_personal_best(play_data, personal_best);
+
+    // Build score string with optional diff
+    let score_str = match comparison.score_diff {
+        Some(diff) => format!(
+            "{} ({})",
+            play_data.ex_score,
+            format!("+{}", diff).green()
+        ),
+        None => play_data.ex_score.to_string(),
+    };
+
+    // Build grade string with optional previous grade
+    let grade_str = match comparison.previous_grade {
+        Some(prev) => format!(
+            "{}→{}",
+            format_colored_grade(&prev),
+            format_colored_grade(&play_data.grade)
+        ),
+        None => format_colored_grade(&play_data.grade),
+    };
+
+    // Build lamp string with optional previous lamp
+    let lamp_str = match comparison.previous_lamp {
+        Some(prev) => format!(
+            "{}→{}",
+            format_colored_lamp(&prev),
+            format_colored_lamp(&play_data.lamp)
+        ),
+        None => format_colored_lamp(&play_data.lamp),
+    };
 
     let line1 = format!(
-        "  Option: {}  Score: {} ({})  Lamp: {}",
-        option, play_data.ex_score, grade_colored, lamp_colored
+        "  Option: {}  Score: {} {}  Lamp: {}",
+        option, score_str, grade_str, lamp_str
     );
 
     let judge = &play_data.judge;
@@ -529,12 +559,12 @@ fn format_colored_grade(grade: &Grade) -> String {
     let name = grade.short_name();
     match grade {
         Grade::NoPlay => name.dimmed().to_string(),
-        // F～B: blue to cyan gradient
-        Grade::F => name.truecolor(0, 100, 255).to_string(),
-        Grade::E => name.truecolor(0, 150, 255).to_string(),
-        Grade::D => name.truecolor(0, 180, 255).to_string(),
-        Grade::C => name.truecolor(0, 210, 255).to_string(),
-        Grade::B => name.truecolor(0, 240, 255).to_string(),
+        // F～B: blue to pale cyan (near white) gradient
+        Grade::F => name.truecolor(0, 120, 255).to_string(),
+        Grade::E => name.truecolor(60, 160, 255).to_string(),
+        Grade::D => name.truecolor(120, 200, 255).to_string(),
+        Grade::C => name.truecolor(180, 230, 255).to_string(),
+        Grade::B => name.truecolor(220, 245, 255).to_string(),
         // A: cyan
         Grade::A => name.truecolor(0, 255, 255).to_string(),
         // AA: silver
@@ -542,6 +572,53 @@ fn format_colored_grade(grade: &Grade) -> String {
         // AAA: gold
         Grade::Aaa => name.truecolor(255, 200, 0).bold().to_string(),
     }
+}
+
+/// Personal best comparison result
+#[derive(Debug, Clone, Default)]
+pub struct PersonalBestComparison {
+    /// Score difference (positive = improvement)
+    pub score_diff: Option<i32>,
+    /// Previous grade if improved
+    pub previous_grade: Option<Grade>,
+    /// Previous lamp if improved
+    pub previous_lamp: Option<Lamp>,
+}
+
+/// Compare current play data with personal best
+pub fn compare_with_personal_best(
+    play_data: &PlayData,
+    best: Option<&ScoreData>,
+) -> PersonalBestComparison {
+    let Some(best) = best else {
+        return PersonalBestComparison::default();
+    };
+
+    let diff_index = play_data.chart.difficulty as usize;
+    let best_score = best.score[diff_index];
+    let best_lamp = best.lamp[diff_index];
+
+    let mut comparison = PersonalBestComparison::default();
+
+    // Score comparison: only show diff if best score exists and current is higher
+    if best_score > 0 && play_data.ex_score > best_score {
+        comparison.score_diff = Some(play_data.ex_score as i32 - best_score as i32);
+    }
+
+    // Grade comparison: calculate grade from best score and compare
+    if best_score > 0 && play_data.chart.total_notes > 0 {
+        let best_grade = PlayData::calculate_grade(best_score, play_data.chart.total_notes);
+        if play_data.grade > best_grade {
+            comparison.previous_grade = Some(best_grade);
+        }
+    }
+
+    // Lamp comparison: direct comparison (Lamp implements Ord)
+    if best_lamp != Lamp::NoPlay && play_data.lamp > best_lamp {
+        comparison.previous_lamp = Some(best_lamp);
+    }
+
+    comparison
 }
 
 /// Simple play data summary for logging
