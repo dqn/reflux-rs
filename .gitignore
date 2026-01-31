@@ -7,6 +7,7 @@ bash.exe.stackdump
 offsets.txt
 sessions/
 tracker.tsv
+.reflux-cache.json
 
 # Debug output files
 dump_output.json
