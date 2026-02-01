@@ -2,7 +2,7 @@ use crate::error::Result;
 use crate::export::{format_full_tsv_header, format_full_tsv_row, format_json_entry};
 use crate::play::PlayData;
 use chrono::{DateTime, Local};
-use serde_json::{Value as JsonValue, json};
+use serde_json::Value as JsonValue;
 use std::fs::{self};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -11,7 +11,7 @@ pub struct SessionManager {
     base_dir: PathBuf,
     current_tsv_session: Option<PathBuf>,
     current_json_session: Option<PathBuf>,
-    json_data: Option<JsonValue>,
+    json_data: Vec<JsonValue>,
 }
 
 impl SessionManager {
@@ -20,7 +20,7 @@ impl SessionManager {
             base_dir: base_dir.as_ref().to_path_buf(),
             current_tsv_session: None,
             current_json_session: None,
-            json_data: None,
+            json_data: Vec::new(),
         }
     }
 
@@ -64,19 +64,11 @@ impl SessionManager {
             .base_dir
             .join(format!("Session_{}.json", now.format("%Y_%m_%d_%H_%M_%S")));
 
-        // Initialize JSON structure
-        let json_data = json!({
-            "head": {
-                "service": "Infinitas",
-                "game": "iidx"
-            },
-            "body": []
-        });
-
-        fs::write(&json_file, serde_json::to_string_pretty(&json_data)?)?;
+        // Initialize as empty array
+        self.json_data = Vec::new();
+        fs::write(&json_file, "[]")?;
 
         self.current_json_session = Some(json_file.clone());
-        self.json_data = Some(json_data);
 
         Ok(json_file)
     }
@@ -93,16 +85,10 @@ impl SessionManager {
 
     /// Append a JSON entry to the session file
     pub fn append_json_entry(&mut self, play_data: &PlayData) -> Result<()> {
-        if let (Some(path), Some(json_data)) = (&self.current_json_session, &mut self.json_data) {
+        if let Some(path) = &self.current_json_session {
             let entry = format_json_entry(play_data);
-
-            if let Some(body) = json_data.get_mut("body")
-                && let Some(arr) = body.as_array_mut()
-            {
-                arr.push(entry);
-            }
-
-            fs::write(path, serde_json::to_string_pretty(json_data)?)?;
+            self.json_data.push(entry);
+            fs::write(path, serde_json::to_string_pretty(&self.json_data)?)?;
         }
         Ok(())
     }
@@ -166,13 +152,11 @@ mod tests {
         assert!(manager.current_json_session_path().is_some());
         assert!(path.extension().unwrap() == "json");
 
-        // Verify JSON structure
+        // Verify JSON structure is an empty array
         let content = fs::read_to_string(&path).unwrap();
         let json: serde_json::Value = serde_json::from_str(&content).unwrap();
-        assert!(json.get("head").is_some());
-        assert!(json.get("body").is_some());
-        assert_eq!(json["head"]["service"], "Infinitas");
-        assert_eq!(json["head"]["game"], "iidx");
+        assert!(json.is_array());
+        assert!(json.as_array().unwrap().is_empty());
     }
 
     #[test]
