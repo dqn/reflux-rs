@@ -291,7 +291,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         }
 
         // Fallback: search for song_id=1001 pattern (first IIDX song)
-        warn!("Trying song_id=1001 pattern search as fallback...");
+        info!("Trying song_id=1001 pattern search as fallback...");
         if let Ok(addr) = self.search_song_list_by_song_id(base_hint) {
             return Ok(addr);
         }
