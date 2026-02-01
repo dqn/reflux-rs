@@ -6,12 +6,12 @@
 //! - `SongInfo` - song metadata
 //! - `UnlockData` - unlock state management
 
-mod chart;
 mod difficulty;
 mod song;
+mod types;
 mod unlock;
 
-pub use chart::*;
+pub use types::*;
 pub use difficulty::*;
 pub use song::*;
 pub use unlock::*;
