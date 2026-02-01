@@ -111,10 +111,13 @@ reflux export -f json
 
 | モジュール         | 役割                                               |
 | ------------------ | -------------------------------------------------- |
-| `game/`            | ゲームデータ構造（PlayData, Judge, Settings 等）   |
-| `memory/`          | Windows プロセスメモリ読み取り                     |
-| `storage/`         | セッション管理、スコアマップ、TSV/JSON 形式        |
-| `offset/`          | シグネチャベースのメモリオフセット検索・管理       |
+| `chart/`           | 楽曲・譜面データ構造                               |
+| `play/`            | ゲームプレイデータ（PlayData, Judge, Settings 等） |
+| `process/`         | Windows プロセスメモリ読み取り                     |
+| `score/`           | スコアデータ管理                                   |
+| `session/`         | セッション管理、TSV/JSON 形式                      |
+| `export/`          | データエクスポート（ExportFormat trait）           |
+| `offset/`          | メモリオフセット検索・管理                         |
 | `offset/searcher/` | オフセット検索のサブモジュール群                   |
 | `debug/`           | メモリダンプ、スキャン、ステータス表示（要 feature） |
 | `reflux/`          | メインアプリケーションロジック                     |
@@ -122,14 +125,19 @@ reflux export -f json
 
 ### offset/searcher サブモジュール
 
-| サブモジュール   | 役割                                       |
-| ---------------- | ------------------------------------------ |
-| `validation.rs`  | オフセット候補のバリデーション関数         |
-| `pattern.rs`     | パターン検索ユーティリティ                 |
-| `relative.rs`    | 相対オフセット検索ユーティリティ           |
-| `constants.rs`   | 検索関連の定数                             |
-| `types.rs`       | 検索結果の型定義                           |
-| `utils.rs`       | ユーティリティ関数                         |
+| サブモジュール       | 役割                                       |
+| -------------------- | ------------------------------------------ |
+| `core.rs`            | OffsetSearcher 構造体と基本操作            |
+| `song_list.rs`       | SongList 検索ロジック                      |
+| `relative_search.rs` | 相対オフセット検索                         |
+| `data_map.rs`        | DataMap/UnlockData 検索・検証              |
+| `buffer.rs`          | バッファ管理とパターン検索ヘルパー         |
+| `interactive.rs`     | 対話的オフセット検索ワークフロー           |
+| `validation/`        | オフセット候補のバリデーション関数         |
+| `pattern.rs`         | パターン検索ユーティリティ（memchr 使用）  |
+| `constants.rs`       | 検索関連の定数                             |
+| `types.rs`           | 検索結果の型定義                           |
+| `legacy.rs`          | レガシーシグネチャ検索（feature-gated）    |
 
 ### 主要な型
 
@@ -142,14 +150,17 @@ reflux export -f json
 - `GameStateDetector` - ゲーム状態検出
 - `ScoreMap`, `ScoreData` - ゲーム内スコアデータ
 - `OffsetsCollection` - メモリオフセット集
+- `OffsetSearcher`, `OffsetSearcherBuilder` - オフセット検索（Builder パターン対応）
 - `SessionManager` - セッション管理
-- `Reflux`, `GameData` - メインアプリケーション
+- `Reflux`, `RefluxConfig`, `GameData` - メインアプリケーション（設定外部化対応）
+- `ExportFormat`, `TsvExporter`, `JsonExporter` - エクスポート形式（trait ベース）
 
 ### Feature Flags
 
-| Feature       | 説明                                           |
-| ------------- | ---------------------------------------------- |
-| `debug-tools` | debug モジュールを有効化（CLI 用、本番向けでない） |
+| Feature             | 説明                                               |
+| ------------------- | -------------------------------------------------- |
+| `debug-tools`       | debug モジュールを有効化（CLI 用、本番向けでない） |
+| `legacy-signatures` | レガシーシグネチャ検索コードを有効化               |
 
 ## 参照資料
 
