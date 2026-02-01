@@ -6,7 +6,8 @@ pub mod pattern;
 pub mod provider;
 mod reader;
 
-#[cfg(test)]
+// Mock memory reader for testing (always available for unit and integration tests)
+#[doc(hidden)]
 pub mod mock;
 
 pub use bytes::{ByteBuffer, decode_shift_jis, decode_shift_jis_to_string};
@@ -15,5 +16,6 @@ pub use handle::*;
 pub use provider::{ProcessInfo, ProcessProvider};
 pub use reader::{MemoryReader, ReadMemory};
 
-#[cfg(test)]
+// Re-export mock for convenient access in tests
+#[doc(hidden)]
 pub use mock::{MockMemoryBuilder, MockMemoryReader};
