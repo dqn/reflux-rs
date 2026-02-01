@@ -1,4 +1,4 @@
-use crate::game::GameState;
+use crate::play::GameState;
 
 /// Game state detector
 pub struct GameStateDetector {

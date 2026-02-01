@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::game::{Difficulty, SongInfo};
+use crate::chart::{Difficulty, SongInfo};
 
 /// Chart identifier (song + difficulty)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -52,7 +52,7 @@ impl ChartInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::UnlockType;
+    use crate::play::UnlockType;
 
     fn make_test_song() -> SongInfo {
         let mut notes = [0u32; 10];

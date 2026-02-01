@@ -1,7 +1,7 @@
 //! Judge data validation.
 
-use crate::memory::ReadMemory;
-use crate::memory::layout::judge;
+use crate::process::ReadMemory;
+use crate::process::layout::judge;
 
 /// Validate if the given address contains valid JudgeData.
 ///

@@ -49,7 +49,7 @@ pub fn run(
 
     // Load TSV if provided
     let tsv_db = if let Some(tsv_path) = tsv_file {
-        match reflux_core::game::load_song_database_from_tsv(tsv_path) {
+        match reflux_core::chart::load_song_database_from_tsv(tsv_path) {
             Ok(db) => {
                 println!("Loaded {} songs from TSV", db.len());
                 Some(db)

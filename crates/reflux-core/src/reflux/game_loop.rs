@@ -9,16 +9,14 @@ use std::time::Duration;
 use chrono::Utc;
 use tracing::{debug, error, info, warn};
 
-use crate::config::{polling, retry};
+use crate::chart::{ChartInfo, Difficulty, fetch_song_by_id, fetch_song_database_from_memory_scan, get_unlock_states};
+use crate::config::{check_version_match, find_game_version, polling, retry};
 use crate::error::Result;
-use crate::game::{
-    AssistType, ChartInfo, Difficulty, GameState, Grade, Judge, Lamp, PlayData, PlayType,
-    PlayerJudge, RawJudgeData, Settings, check_version_match, fetch_song_by_id,
-    fetch_song_database_from_memory_scan, find_game_version, get_unlock_states,
-};
-use crate::memory::layout::{judge, play, settings, timing};
-use crate::memory::{MemoryReader, ProcessHandle, ReadMemory};
-use crate::storage::format_play_data_console;
+use crate::process::layout::{judge, play, settings, timing};
+use crate::process::{MemoryReader, ProcessHandle, ReadMemory};
+use crate::play::{AssistType, GameState, PlayData, PlayType, Settings};
+use crate::score::{Grade, Judge, Lamp, PlayerJudge, RawJudgeData};
+use crate::export::format_play_data_console;
 
 use super::Reflux;
 
@@ -87,7 +85,7 @@ impl Reflux {
         debug!("Starting tracker loop...");
 
         // Start TSV session
-        self.session_manager = crate::storage::SessionManager::new("sessions");
+        self.session_manager = crate::session::SessionManager::new("sessions");
         match self.session_manager.start_tsv_session() {
             Ok(path) => debug!("Started TSV session at {:?}", path),
             Err(e) => warn!("Failed to start TSV session: {}", e),
@@ -363,7 +361,7 @@ impl Reflux {
 
         // Detect changes
         let changes =
-            crate::game::detect_unlock_changes(&self.game_data.unlock_state, &current_state);
+            crate::chart::detect_unlock_changes(&self.game_data.unlock_state, &current_state);
 
         if !changes.is_empty() {
             debug!("Detected {} unlock state changes", changes.len());

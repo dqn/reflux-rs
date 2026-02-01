@@ -13,43 +13,69 @@
 //! - `debug-tools`: Enables debug utilities for memory analysis and offset verification.
 //!   This feature is intended for CLI tools and development, not production use.
 
+pub mod chart;
 pub mod config;
 #[cfg(feature = "debug-tools")]
 pub mod debug;
 pub mod error;
-pub mod game;
-pub mod memory;
+pub mod export;
 pub mod offset;
+pub mod play;
+pub mod process;
 pub mod reflux;
 pub mod retry;
-pub mod storage;
-pub mod stream;
+pub mod score;
+pub mod session;
 
-pub use error::{Error, Result};
-pub use game::{
-    AssistType, Chart, ChartInfo, CustomTypes, Difficulty, EncodingFixes, GameState,
-    GameStateDetector, Grade, Judge, Lamp, PlayData, PlayType, RangeType, Settings, SongInfo,
-    Style, UnlockData, UnlockType, calculate_dj_points, calculate_dj_points_from_score,
-    fetch_song_database, fetch_song_database_with_fixes, get_unlock_state_for_difficulty,
-    get_unlock_states,
+// Re-export from chart module
+pub use chart::{
+    Chart, ChartInfo, Difficulty, SongInfo, UnlockData, fetch_song_database,
+    fetch_song_database_with_fixes, get_unlock_state_for_difficulty, get_unlock_states,
 };
-pub use memory::{
+
+// Re-export from config module
+pub use config::{CustomTypes, EncodingFixes, check_version_match, extract_date_code, find_game_version};
+
+// Re-export from error module
+pub use error::{Error, Result};
+
+// Re-export from process module
+pub use process::{
     ByteBuffer, MemoryReader, ProcessHandle, ProcessInfo, ProcessProvider, ReadMemory,
     decode_shift_jis, decode_shift_jis_to_string,
 };
+
+// Re-export from offset module
 pub use offset::{
     CodeSignature, InteractiveSearchResult, JudgeInput, OffsetCache, OffsetDump, OffsetSearcher,
     OffsetSignatureEntry, OffsetSignatureSet, OffsetsCollection, SearchPrompter, SearchResult,
     builtin_signatures, load_offsets, load_signatures, save_offsets, save_offsets_to_cache,
     save_signatures, try_load_cached_offsets,
 };
-pub use reflux::{GameData, Reflux};
-pub use retry::{ExponentialBackoff, FixedDelay, NoRetry, RetryStrategy};
-pub use storage::{
-    ScoreData, ScoreMap, SessionManager, TsvRowData, export_song_list, export_tracker_json,
-    export_tracker_tsv, format_tracker_tsv_header, generate_tracker_json, generate_tracker_tsv,
+
+// Re-export from play module
+pub use play::{
+    AssistType, GameState, GameStateDetector, PlayData, PlayType, RangeType, Settings, Style,
+    UnlockType, calculate_dj_points, calculate_dj_points_from_score,
 };
-pub use stream::StreamOutput;
+
+// Re-export from reflux module
+pub use reflux::{GameData, Reflux};
+
+// Re-export from retry module
+pub use retry::{ExponentialBackoff, FixedDelay, NoRetry, RetryStrategy};
+
+// Re-export from score module
+pub use score::{Grade, Judge, Lamp, ScoreData, ScoreMap};
+
+// Re-export from export module
+pub use export::{
+    StreamOutput, TsvRowData, export_song_list, export_tracker_json, export_tracker_tsv,
+    format_tracker_tsv_header, generate_tracker_json, generate_tracker_tsv,
+};
+
+// Re-export from session module
+pub use session::SessionManager;
 
 // Debug utilities (requires debug-tools feature)
 #[cfg(feature = "debug-tools")]

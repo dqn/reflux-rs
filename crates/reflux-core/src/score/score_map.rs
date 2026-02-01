@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::chart::{Difficulty, SongInfo};
 use crate::error::Result;
-use crate::game::{Difficulty, Lamp, SongInfo};
-use crate::memory::{ByteBuffer, ReadMemory};
+use crate::process::{ByteBuffer, ReadMemory};
+use crate::score::Lamp;
 
 /// Score data for a single song (all difficulties)
 #[derive(Debug, Clone, Default)]
@@ -237,7 +238,7 @@ impl ScoreMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::MockMemoryBuilder;
+    use crate::process::MockMemoryBuilder;
 
     #[test]
     fn test_score_data_new() {

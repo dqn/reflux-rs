@@ -13,7 +13,7 @@ mod unlock;
 use tracing::debug;
 
 use crate::error::Result;
-use crate::memory::ReadMemory;
+use crate::process::ReadMemory;
 use crate::offset::OffsetsCollection;
 
 use super::constants::*;
@@ -330,8 +330,8 @@ pub fn validate_basic_memory_access<R: ReadMemory>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::MockMemoryBuilder;
-    use crate::memory::layout::{judge, settings};
+    use crate::process::MockMemoryBuilder;
+    use crate::process::layout::{judge, settings};
 
     #[test]
     fn test_validate_judge_data() {

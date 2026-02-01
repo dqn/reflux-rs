@@ -15,7 +15,7 @@
 /// # Example
 ///
 /// ```
-/// use reflux_core::memory::pattern::find_pattern;
+/// use reflux_core::process::pattern::find_pattern;
 ///
 /// let buffer = [1, 2, 3, 1, 2, 3, 4];
 /// let matches = find_pattern(&buffer, &[1, 2, 3]);
@@ -46,7 +46,7 @@ pub fn find_pattern(buffer: &[u8], pattern: &[u8]) -> Vec<usize> {
 /// # Example
 ///
 /// ```
-/// use reflux_core::memory::pattern::find_pattern_with_wildcards;
+/// use reflux_core::process::pattern::find_pattern_with_wildcards;
 ///
 /// let buffer = [1, 2, 3, 1, 9, 3];
 /// // Pattern [1, ??, 3] where ?? is a wildcard

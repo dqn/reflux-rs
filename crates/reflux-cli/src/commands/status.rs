@@ -1,7 +1,7 @@
 //! Status command implementation.
 
 use anyhow::{Result, bail};
-use reflux_core::game::find_game_version;
+use reflux_core::config::find_game_version;
 use reflux_core::{
     MemoryReader, OffsetSearcher, ProcessHandle, StatusInfo, builtin_signatures, load_offsets,
 };

@@ -2,8 +2,8 @@
 
 use serde::Serialize;
 
-use crate::game::SongInfo;
-use crate::memory::ReadMemory;
+use crate::chart::SongInfo;
+use crate::process::ReadMemory;
 use crate::offset::OffsetsCollection;
 
 /// Memory dump at a specific location

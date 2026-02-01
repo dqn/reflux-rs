@@ -1,3 +1,9 @@
+//! Export formats for play data and tracking data.
+
+mod stream;
+
+pub use stream::StreamOutput;
+
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::fs;
@@ -7,12 +13,10 @@ use owo_colors::OwoColorize;
 use serde::Serialize;
 use serde_json::{Value as JsonValue, json};
 
+use crate::chart::{Difficulty, SongInfo, UnlockData, get_unlock_state_for_difficulty};
 use crate::error::Result;
-use crate::game::{
-    Difficulty, Grade, Lamp, PlayData, SongInfo, UnlockData, UnlockType, calculate_dj_points,
-    get_unlock_state_for_difficulty,
-};
-use crate::storage::{ScoreData, ScoreMap};
+use crate::play::{PlayData, UnlockType, calculate_dj_points};
+use crate::score::{Grade, Lamp, ScoreData, ScoreMap};
 
 pub fn format_tsv_header() -> String {
     [
@@ -342,7 +346,7 @@ fn generate_tracker_entry(
             let lamp = s.lamp[diff_index];
             let ex_score = s.score[diff_index];
             let grade = if total_notes > 0 {
-                crate::game::PlayData::calculate_grade(ex_score, total_notes)
+                crate::play::PlayData::calculate_grade(ex_score, total_notes)
             } else {
                 Grade::NoPlay
             };
@@ -560,10 +564,10 @@ fn format_colored_grade(grade: &Grade) -> String {
     match grade {
         Grade::NoPlay => name.dimmed().to_string(),
         // F～B: blue to pale cyan (near white) gradient
-        Grade::F => name.truecolor(0, 120, 255).to_string(),
-        Grade::E => name.truecolor(60, 160, 255).to_string(),
-        Grade::D => name.truecolor(120, 200, 255).to_string(),
-        Grade::C => name.truecolor(180, 230, 255).to_string(),
+        Grade::F => name.truecolor(0, 0, 255).to_string(),
+        Grade::E => name.truecolor(50, 100, 255).to_string(),
+        Grade::D => name.truecolor(110, 170, 255).to_string(),
+        Grade::C => name.truecolor(170, 215, 255).to_string(),
         Grade::B => name.truecolor(220, 245, 255).to_string(),
         // A: cyan
         Grade::A => name.truecolor(0, 255, 255).to_string(),
@@ -737,7 +741,7 @@ fn generate_song_json(
         let (lamp, grade, ex_score, miss_count, djp) = if let Some(s) = scores {
             let lamp = s.lamp[diff_index];
             let ex_score = s.score[diff_index];
-            let grade = crate::game::PlayData::calculate_grade(ex_score, total_notes);
+            let grade = crate::play::PlayData::calculate_grade(ex_score, total_notes);
             let djp = calculate_dj_points(ex_score, grade, lamp);
             let miss_count = s.miss_count[diff_index];
             (lamp, grade, ex_score, miss_count, djp)
@@ -923,7 +927,9 @@ mod tests {
 
     #[test]
     fn test_format_play_summary() {
-        use crate::game::{ChartInfo, Judge, PlayType, Settings};
+        use crate::chart::ChartInfo;
+        use crate::play::{PlayType, Settings};
+        use crate::score::Judge;
 
         let play_data = PlayData {
             chart: ChartInfo {
@@ -968,7 +974,9 @@ mod tests {
     }
 
     fn create_test_play_data(ex_score: u32, grade: Grade, lamp: Lamp) -> PlayData {
-        use crate::game::{ChartInfo, Judge, PlayType, Settings};
+        use crate::chart::ChartInfo;
+        use crate::play::{PlayType, Settings};
+        use crate::score::Judge;
 
         PlayData {
             chart: ChartInfo {

@@ -1,7 +1,7 @@
 #![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 
 use crate::error::{Error, Result};
-use crate::memory::provider::ProcessInfo;
+use crate::process::provider::ProcessInfo;
 
 #[cfg(target_os = "windows")]
 use tracing::warn;

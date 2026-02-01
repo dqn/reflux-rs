@@ -3,7 +3,9 @@
 //! These tests verify that multiple modules work together correctly.
 //! Tests requiring mock memory readers are in unit tests within the crate.
 
-use reflux_core::game::{Difficulty, GameState, GameStateDetector, Grade, Lamp};
+use reflux_core::chart::Difficulty;
+use reflux_core::play::{GameState, GameStateDetector};
+use reflux_core::score::{Grade, Lamp};
 use reflux_core::retry::{ExponentialBackoff, FixedDelay, NoRetry, RetryStrategy};
 
 /// Test game state detection

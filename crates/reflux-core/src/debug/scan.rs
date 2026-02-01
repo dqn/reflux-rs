@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use crate::game::SongInfo;
-use crate::memory::ReadMemory;
+use crate::chart::SongInfo;
+use crate::process::ReadMemory;
 
 /// Information about a scanned song
 #[derive(Debug, Clone, Serialize)]

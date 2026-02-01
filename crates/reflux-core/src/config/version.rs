@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::memory::ReadMemory;
+use crate::process::ReadMemory;
 
 /// Version prefix for INFINITAS
 const VERSION_PREFIX: &str = "P2D:J:B:A:";

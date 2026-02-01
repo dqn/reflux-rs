@@ -27,11 +27,13 @@ use std::path::Path;
 
 use tracing::{debug, info};
 
+use crate::chart::{Difficulty, SongInfo, UnlockData};
 use crate::error::Result;
-use crate::game::{Difficulty, GameStateDetector, SongInfo, UnlockData};
 use crate::offset::OffsetsCollection;
-use crate::storage::{ScoreMap, SessionManager};
-use crate::stream::StreamOutput;
+use crate::play::GameStateDetector;
+use crate::score::ScoreMap;
+use crate::export::StreamOutput;
+use crate::session::SessionManager;
 
 /// Game data loaded from memory and files
 pub struct GameData {
@@ -140,7 +142,7 @@ impl Reflux {
 
     /// Export tracker data to TSV file
     pub fn export_tracker_tsv<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        crate::storage::export_tracker_tsv(
+        crate::export::export_tracker_tsv(
             path,
             &self.game_data.song_db,
             &self.game_data.unlock_state,

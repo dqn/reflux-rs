@@ -1,4 +1,4 @@
-use crate::memory::ReadMemory;
+use crate::process::ReadMemory;
 use crate::offset::OffsetsCollection;
 use anyhow::Result;
 use serde::Serialize;

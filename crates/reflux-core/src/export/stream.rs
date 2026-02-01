@@ -1,5 +1,6 @@
 use crate::error::Result;
-use crate::game::{Difficulty, GameState, SongInfo};
+use crate::chart::{Difficulty, SongInfo};
+use crate::play::GameState;
 use std::fs;
 use std::path::Path;
 
@@ -104,7 +105,7 @@ impl StreamOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::UnlockType;
+    use crate::play::UnlockType;
     use std::sync::Arc;
     use tempfile::TempDir;
 

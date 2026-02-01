@@ -1,6 +1,6 @@
 //! Types for offset searching
 
-use crate::game::PlayType;
+use crate::play::PlayType;
 use crate::offset::OffsetsCollection;
 
 /// Judge data for interactive offset searching

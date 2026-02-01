@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
+use crate::chart::{Difficulty, SongInfo};
 use crate::error::Result;
-use crate::game::{Difficulty, SongInfo, UnlockType};
-use crate::memory::{ByteBuffer, ReadMemory};
+use crate::process::{ByteBuffer, ReadMemory};
+use crate::play::UnlockType;
 
 /// Unlock data structure from memory
 #[derive(Debug, Clone, Default)]

@@ -1,7 +1,18 @@
-//! Centralized configuration constants for Reflux.
+//! Configuration and support files.
 //!
-//! This module consolidates timing and retry constants that were previously
-//! scattered across multiple modules.
+//! This module contains types for configuration and support files:
+//! - `CustomTypes` - custom unlock type overrides
+//! - `EncodingFixes` - encoding fixes for song titles and artists
+//! - Version detection utilities
+//! - Polling, retry, and database configuration constants
+
+mod custom_types;
+mod encoding_fixes;
+mod version;
+
+pub use custom_types::*;
+pub use encoding_fixes::*;
+pub use version::*;
 
 /// Memory read retry configuration.
 ///

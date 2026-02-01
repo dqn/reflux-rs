@@ -89,7 +89,7 @@ impl<R: ReadMemory> Iterator for ChunkedMemoryIterator<'_, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::mock::MockMemoryBuilder;
+    use crate::process::mock::MockMemoryBuilder;
 
     #[test]
     fn test_chunked_iterator_single_chunk() {

@@ -4,7 +4,7 @@
 //! that reads from an in-memory buffer instead of a real process.
 
 use crate::error::{Error, Result};
-use crate::memory::ReadMemory;
+use crate::process::ReadMemory;
 
 /// Mock memory reader for testing
 ///

@@ -12,6 +12,7 @@
 mod constants;
 pub mod pattern;
 pub mod relative;
+pub mod search;
 mod types;
 mod utils;
 pub mod validation;
@@ -19,8 +20,9 @@ pub mod validation;
 use tracing::{debug, info, warn};
 
 use crate::error::{Error, Result};
-use crate::game::{PlayType, SongInfo};
-use crate::memory::{ByteBuffer, ReadMemory, decode_shift_jis_to_string};
+use crate::chart::SongInfo;
+use crate::play::PlayType;
+use crate::process::{ByteBuffer, ReadMemory, decode_shift_jis_to_string};
 use crate::offset::{CodeSignature, OffsetSignatureSet, OffsetsCollection};
 
 // Re-export validation functions and trait
@@ -1595,7 +1597,7 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 
         // Adjust for P2 offset if needed
         new_offsets.play_settings = if play_type == PlayType::P2 {
-            use crate::game::Settings;
+            use crate::play::Settings;
             settings_addr1 - Settings::P2_OFFSET
         } else {
             settings_addr1
@@ -1717,8 +1719,8 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::MockMemoryBuilder;
-    use crate::memory::layout::{judge, settings};
+    use crate::process::MockMemoryBuilder;
+    use crate::process::layout::{judge, settings};
     use crate::offset::OffsetsCollection;
 
     #[test]

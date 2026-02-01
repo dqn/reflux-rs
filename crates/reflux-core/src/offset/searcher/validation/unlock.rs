@@ -1,6 +1,6 @@
 //! Unlock data validation.
 
-use crate::memory::ReadMemory;
+use crate::process::ReadMemory;
 
 use super::super::constants::*;
 

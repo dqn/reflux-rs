@@ -1,7 +1,7 @@
 //! Current song validation.
 
 use crate::error::Result;
-use crate::memory::ReadMemory;
+use crate::process::ReadMemory;
 
 use super::super::utils::is_power_of_two;
 

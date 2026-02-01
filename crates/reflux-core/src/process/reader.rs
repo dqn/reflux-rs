@@ -1,8 +1,8 @@
 #![cfg_attr(not(target_os = "windows"), allow(dead_code, unused_variables))]
 
 use crate::error::{Error, Result};
-use crate::memory::ProcessHandle;
-use crate::memory::bytes::decode_shift_jis_to_string;
+use crate::process::ProcessHandle;
+use crate::process::bytes::decode_shift_jis_to_string;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
@@ -136,7 +136,7 @@ impl ReadMemory for MemoryReader<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::mock::MockMemoryReader;
+    use crate::process::mock::MockMemoryReader;
 
     #[test]
     fn test_read_i32() {

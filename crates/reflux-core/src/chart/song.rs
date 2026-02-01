@@ -7,9 +7,10 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
+use crate::config::EncodingFixes;
 use crate::error::Result;
-use crate::game::{EncodingFixes, UnlockType};
-use crate::memory::{ByteBuffer, ReadMemory, decode_shift_jis};
+use crate::process::{ByteBuffer, ReadMemory, decode_shift_jis};
+use crate::play::UnlockType;
 
 /// Song metadata
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

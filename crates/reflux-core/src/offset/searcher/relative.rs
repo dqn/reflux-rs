@@ -4,7 +4,7 @@
 //! from anchor addresses.
 
 use crate::error::{Error, Result};
-use crate::memory::ReadMemory;
+use crate::process::ReadMemory;
 
 use super::constants::*;
 use super::validation::OffsetValidation;
@@ -117,8 +117,8 @@ pub fn search_current_song_near_judge_data<R: ReadMemory>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::MockMemoryBuilder;
-    use crate::memory::layout::judge;
+    use crate::process::MockMemoryBuilder;
+    use crate::process::layout::judge;
 
     // ========================================================================
     // Version offset tests

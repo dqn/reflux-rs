@@ -1,8 +1,8 @@
 //! Play settings and play data validation.
 
 use crate::error::Result;
-use crate::memory::ReadMemory;
-use crate::memory::layout::settings;
+use crate::process::ReadMemory;
+use crate::process::layout::settings;
 
 use super::super::constants::*;
 

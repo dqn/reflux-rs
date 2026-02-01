@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use reflux_core::game::find_game_version;
+use reflux_core::config::find_game_version;
 use reflux_core::{MemoryReader, OffsetSearcher, OffsetsCollection, ProcessHandle, save_offsets};
 use tracing::{debug, info, warn};
 

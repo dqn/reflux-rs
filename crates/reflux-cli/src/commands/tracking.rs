@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use reflux_core::game::find_game_version;
+use reflux_core::config::find_game_version;
 use reflux_core::{
     CustomTypes, EncodingFixes, MemoryReader, OffsetSearcher, OffsetsCollection, ProcessHandle,
     Reflux, ScoreMap, SongInfo, load_offsets, save_offsets_to_cache, try_load_cached_offsets,
@@ -200,7 +200,7 @@ fn load_song_database(
 
     if std::path::Path::new(tsv_path).exists() {
         debug!("Building song database from TSV + memory scan...");
-        let db = reflux_core::game::build_song_database_from_tsv_with_memory(
+        let db = reflux_core::chart::build_song_database_from_tsv_with_memory(
             reader, song_list, tsv_path, 0x100000, // 1MB scan
         );
 
@@ -214,7 +214,7 @@ fn load_song_database(
     // No TSV, use memory-only approach
     debug!("No TSV file found, using memory scan...");
     let song_db =
-        reflux_core::game::fetch_song_database_from_memory_scan(reader, song_list, 0x100000);
+        reflux_core::chart::fetch_song_database_from_memory_scan(reader, song_list, 0x100000);
 
     if song_db.is_empty() {
         debug!("Memory scan found no songs, trying legacy approach...");

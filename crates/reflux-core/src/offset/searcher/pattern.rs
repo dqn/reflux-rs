@@ -6,7 +6,7 @@
 use tracing::debug;
 
 use crate::error::{Error, Result};
-use crate::memory::ReadMemory;
+use crate::process::ReadMemory;
 use crate::offset::CodeSignature;
 
 use super::constants::*;
@@ -307,7 +307,7 @@ impl<'a, R: ReadMemory> PatternSearcher<'a, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::MockMemoryBuilder;
+    use crate::process::MockMemoryBuilder;
 
     #[test]
     fn test_find_all_matches() {

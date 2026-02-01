@@ -1,7 +1,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::game::{AssistType, ChartInfo, Grade, Judge, Lamp, Settings};
+use crate::chart::ChartInfo;
+use crate::play::{AssistType, Settings};
+use crate::score::{Grade, Judge, Lamp};
 
 /// Complete play data for a single play
 #[derive(Debug, Clone, Serialize, Deserialize)]

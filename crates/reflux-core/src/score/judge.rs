@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::game::PlayType;
+use crate::play::PlayType;
 
 /// Raw judge data for a single player side (P1 or P2)
 #[derive(Debug, Clone, Default)]

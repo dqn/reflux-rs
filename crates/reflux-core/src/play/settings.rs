@@ -3,7 +3,7 @@ use strum::{Display, IntoStaticStr};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::game::PlayType;
+use crate::play::PlayType;
 
 /// Error for invalid enum value conversion
 #[derive(Debug, Error)]

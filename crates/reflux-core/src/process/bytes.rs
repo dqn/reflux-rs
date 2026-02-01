@@ -20,7 +20,7 @@ use crate::error::{Error, Result};
 /// # Example
 ///
 /// ```
-/// use reflux_core::memory::ByteBuffer;
+/// use reflux_core::process::ByteBuffer;
 ///
 /// let data = [0x78, 0x56, 0x34, 0x12, 0x00, 0x00, 0x00, 0x00];
 /// let mut buf = ByteBuffer::new(&data);
