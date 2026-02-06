@@ -43,7 +43,9 @@ pub use json::JsonExporter;
 pub use tsv::TsvExporter;
 
 // Re-export TSV functions
-pub use tsv::{TsvRowData, format_full_tsv_header, format_full_tsv_row, format_tsv_header, format_tsv_row};
+pub use tsv::{
+    TsvRowData, format_full_tsv_header, format_full_tsv_row, format_tsv_header, format_tsv_row,
+};
 
 // Re-export JSON functions
 pub use json::{JudgeJson, PlayDataJson, format_json_entry};

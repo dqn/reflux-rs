@@ -286,7 +286,7 @@ mod play_data {
             .write_i32(12, 25) // miss_count
             .build();
 
-        assert!(reader.validate_play_data_address(0x1000).unwrap());
+        assert!(reader.validate_play_data_address(0x1000));
     }
 
     #[test]
@@ -300,7 +300,7 @@ mod play_data {
             .write_i32(12, 0)
             .build();
 
-        assert!(reader.validate_play_data_address(0x1000).unwrap());
+        assert!(reader.validate_play_data_address(0x1000));
     }
 
     #[test]
@@ -314,7 +314,7 @@ mod play_data {
             .write_i32(12, 3000) // max miss_count
             .build();
 
-        assert!(reader.validate_play_data_address(0x1000).unwrap());
+        assert!(reader.validate_play_data_address(0x1000));
     }
 
     #[test]
@@ -329,7 +329,7 @@ mod play_data {
             .write_i32(12, 0)
             .build();
 
-        assert!(!reader.validate_play_data_address(0x1000).unwrap());
+        assert!(!reader.validate_play_data_address(0x1000));
     }
 
     #[test]
@@ -343,7 +343,7 @@ mod play_data {
             .write_i32(12, 25)
             .build();
 
-        assert!(!reader.validate_play_data_address(0x1000).unwrap());
+        assert!(!reader.validate_play_data_address(0x1000));
     }
 
     #[test]
@@ -357,7 +357,7 @@ mod play_data {
             .write_i32(12, 25)
             .build();
 
-        assert!(!reader.validate_play_data_address(0x1000).unwrap());
+        assert!(!reader.validate_play_data_address(0x1000));
     }
 
     #[test]
@@ -371,7 +371,7 @@ mod play_data {
             .write_i32(12, 25)
             .build();
 
-        assert!(!reader.validate_play_data_address(0x1000).unwrap());
+        assert!(!reader.validate_play_data_address(0x1000));
     }
 
     #[test]
@@ -385,7 +385,7 @@ mod play_data {
             .write_i32(12, 25)
             .build();
 
-        assert!(!reader.validate_play_data_address(0x1000).unwrap());
+        assert!(!reader.validate_play_data_address(0x1000));
     }
 }
 
@@ -406,7 +406,7 @@ mod current_song {
             .write_i32(8, 500) // field3
             .build();
 
-        assert!(reader.validate_current_song_address(0x1000).unwrap());
+        assert!(reader.validate_current_song_address(0x1000));
     }
 
     #[test]
@@ -420,7 +420,7 @@ mod current_song {
             .write_i32(8, 0)
             .build();
 
-        assert!(!reader.validate_current_song_address(0x1000).unwrap());
+        assert!(!reader.validate_current_song_address(0x1000));
     }
 
     #[test]
@@ -436,7 +436,7 @@ mod current_song {
                 .build();
 
             assert!(
-                !reader.validate_current_song_address(0x1000).unwrap(),
+                !reader.validate_current_song_address(0x1000),
                 "Power of 2 song_id {} should be rejected",
                 power
             );
@@ -454,7 +454,7 @@ mod current_song {
             .write_i32(8, 500)
             .build();
 
-        assert!(reader.validate_current_song_address(0x1000).unwrap());
+        assert!(reader.validate_current_song_address(0x1000));
     }
 
     #[test]
@@ -467,7 +467,7 @@ mod current_song {
             .write_i32(8, 500)
             .build();
 
-        assert!(!reader.validate_current_song_address(0x1000).unwrap());
+        assert!(!reader.validate_current_song_address(0x1000));
     }
 
     #[test]
@@ -480,7 +480,7 @@ mod current_song {
             .write_i32(8, 15000) // Invalid: > 10000
             .build();
 
-        assert!(!reader.validate_current_song_address(0x1000).unwrap());
+        assert!(!reader.validate_current_song_address(0x1000));
     }
 
     #[test]
@@ -493,7 +493,7 @@ mod current_song {
             .write_i32(8, -1) // Invalid: negative
             .build();
 
-        assert!(!reader.validate_current_song_address(0x1000).unwrap());
+        assert!(!reader.validate_current_song_address(0x1000));
     }
 }
 

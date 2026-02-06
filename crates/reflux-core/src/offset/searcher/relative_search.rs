@@ -63,7 +63,8 @@ impl<R: ReadMemory> OffsetSearcher<'_, R> {
             }
             // Cross-validate: check if CurrentSong at expected relative position is valid
             let inferred_current_song = addr.wrapping_add(JUDGE_TO_CURRENT_SONG);
-            this.reader.validate_current_song_address(inferred_current_song)
+            this.reader
+                .validate_current_song_address(inferred_current_song)
         });
 
         if let Some(addr) = result {

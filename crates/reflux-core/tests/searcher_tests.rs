@@ -85,7 +85,7 @@ fn test_validate_play_data_valid() {
         .write_i32(12, 25) // miss_count
         .build();
 
-    let result = reader.validate_play_data_address(0x1000).unwrap();
+    let result = reader.validate_play_data_address(0x1000);
     assert!(result);
 }
 
@@ -102,7 +102,7 @@ fn test_validate_play_data_all_zeros_is_rejected() {
         .write_i32(12, 0) // miss_count
         .build();
 
-    let result = reader.validate_play_data_address(0x1000).unwrap();
+    let result = reader.validate_play_data_address(0x1000);
     assert!(!result);
 }
 
@@ -117,7 +117,7 @@ fn test_validate_play_data_invalid_song_id() {
         .write_i32(12, 25)
         .build();
 
-    let result = reader.validate_play_data_address(0x1000).unwrap();
+    let result = reader.validate_play_data_address(0x1000);
     assert!(!result);
 }
 
@@ -131,7 +131,7 @@ fn test_validate_current_song_valid() {
         .write_i32(8, 500) // field3
         .build();
 
-    let result = reader.validate_current_song_address(0x1000).unwrap();
+    let result = reader.validate_current_song_address(0x1000);
     assert!(result);
 }
 
@@ -145,7 +145,7 @@ fn test_validate_current_song_power_of_two_rejected() {
         .write_i32(4, 3)
         .write_i32(8, 500)
         .build();
-    let result = reader.validate_current_song_address(0x1000).unwrap();
+    let result = reader.validate_current_song_address(0x1000);
     assert!(!result);
 }
 
