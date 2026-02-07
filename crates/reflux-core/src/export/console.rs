@@ -69,40 +69,46 @@ pub fn format_play_data_console(play_data: &PlayData, personal_best: Option<&Sco
         None => format_colored_lamp(&play_data.lamp),
     };
 
-    // Build miss count string (only when valid)
-    let miss_str = if play_data.miss_count_valid() {
-        let miss = play_data.miss_count();
-        match comparison.miss_count_diff {
-            Some(diff) => format!("  Miss: {} ({})", miss, format!("{}", diff).green()),
-            None => format!("  Miss: {}", miss),
-        }
-    } else {
-        String::new()
-    };
-
-    let line1 = format!(
-        "  Option: {}  Score: {} {}  Lamp: {}{}",
-        option, score_str, grade_str, lamp_str, miss_str
-    );
-
     let judge = &play_data.judge;
-    let line2 = format!(
-        "  Judge: {}/{}/{}/{}/{}  Fast/Slow: {}/{}  CB: {}",
-        judge.pgreat.cyan(),
-        judge.great.yellow(),
-        judge.good.truecolor(255, 200, 0), // gold (between yellow and orange)
-        judge.bad.truecolor(255, 165, 0),  // orange
-        judge.poor.red(),
-        judge.fast.blue(),
-        judge.slow.red(),
-        judge.combo_break
-    );
 
     let _ = writeln!(output, "{}", border_dim);
     let _ = writeln!(output, "{}", title_content);
     let _ = writeln!(output, "{}", border_dim);
-    let _ = writeln!(output, "{}", line1);
-    let _ = writeln!(output, "{}", line2);
+    let _ = writeln!(output, "  Option : {}", option);
+    let _ = writeln!(output, "  Score  : {} {}", score_str, grade_str);
+    let _ = writeln!(output, "  Lamp   : {}", lamp_str);
+    if play_data.miss_count_valid() {
+        let miss = play_data.miss_count();
+        match comparison.miss_count_diff {
+            Some(diff) => {
+                let _ = writeln!(
+                    output,
+                    "  Miss   : {} ({})",
+                    miss,
+                    format!("{}", diff).green()
+                );
+            }
+            None => {
+                let _ = writeln!(output, "  Miss   : {}", miss);
+            }
+        }
+    }
+    let _ = writeln!(
+        output,
+        "  Judge  : {}/{}/{}/{}/{}",
+        judge.pgreat.cyan(),
+        judge.great.yellow(),
+        judge.good.truecolor(255, 200, 0),
+        judge.bad.truecolor(255, 165, 0),
+        judge.poor.red(),
+    );
+    let _ = writeln!(
+        output,
+        "  F/S    : {}/{}",
+        judge.fast.blue(),
+        judge.slow.red()
+    );
+    let _ = writeln!(output, "  CB     : {}", judge.combo_break);
     let _ = write!(output, "{}", border_dim);
 
     output
