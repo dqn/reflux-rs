@@ -75,8 +75,8 @@ pub fn format_play_data_console(play_data: &PlayData, personal_best: Option<&Sco
     let _ = writeln!(output, "{}", title_content);
     let _ = writeln!(output, "{}", border_dim);
     let _ = writeln!(output, "  Option : {}", option);
-    let _ = writeln!(output, "  Score  : {} {}", score_str, grade_str);
     let _ = writeln!(output, "  Lamp   : {}", lamp_str);
+    let _ = writeln!(output, "  Score  : {} {}", score_str, grade_str);
     if play_data.miss_count_valid() {
         let miss = play_data.miss_count();
         match comparison.miss_count_diff {
