@@ -190,10 +190,13 @@ impl ScoreMap {
             let song_id = node.song as u32;
             let next_addr = node.next;
 
-            // Store node if song is in database (skip unknown songs instead of breaking)
-            if song_db.contains_key(&song_id)
-                && let std::collections::hash_map::Entry::Vacant(e) = nodes.entry(node.key())
-            {
+            // Break on unknown songs (matches C# reference behavior)
+            // Score map is reloaded when new songs are discovered (Fix 3)
+            if !song_db.contains_key(&song_id) {
+                break;
+            }
+
+            if let std::collections::hash_map::Entry::Vacant(e) = nodes.entry(node.key()) {
                 e.insert(node);
             }
 
