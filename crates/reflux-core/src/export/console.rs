@@ -92,6 +92,8 @@ pub fn format_play_data_console(play_data: &PlayData, personal_best: Option<&Sco
                 let _ = writeln!(output, "  Miss   : {}", miss);
             }
         }
+    } else {
+        let _ = writeln!(output, "  Miss   : -");
     }
     let _ = writeln!(
         output,
