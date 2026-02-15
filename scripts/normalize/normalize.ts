@@ -53,7 +53,7 @@ type EndpointKey = keyof TitleMapping;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const TRACKER_TSV_PATH = path.resolve(__dirname, "../../.agent/tracker.tsv");
+const TRACKER_JSON_PATH = path.resolve(__dirname, "tracker.json");
 const OUTPUT_PATH = path.resolve(__dirname, "title-mapping.json");
 
 const ENDPOINTS: Record<EndpointKey, string> = {
@@ -78,19 +78,6 @@ const FULLWIDTH_TO_HALFWIDTH: ReadonlyMap<string, string> = new Map([
   ["\uff01", "!"], // ！ → !
   ["\u3000", " "], // fullwidth space → halfwidth space
 ]);
-
-// Column indices in tracker.tsv (0-based)
-const COL = {
-  TITLE: 0,
-  SPN_RATING: 17,
-  SPN_LAMP: 18,
-  SPH_RATING: 25,
-  SPH_LAMP: 26,
-  SPA_RATING: 33,
-  SPA_LAMP: 34,
-  SPL_RATING: 41,
-  SPL_LAMP: 42,
-} as const;
 
 // --- Normalization ---
 
@@ -130,7 +117,7 @@ function analyzeSuffix(title: string): SuffixAnalysis {
   return { cleanTitle: title, difficulty: "SPA" };
 }
 
-// --- Tracker TSV parsing ---
+// --- Tracker loading ---
 
 function parseLamp(value: string | undefined): Lamp {
   const trimmed = (value ?? "").trim();
@@ -151,41 +138,26 @@ function parseLamp(value: string | undefined): Lamp {
   return "NO PLAY";
 }
 
-async function parseTrackerTsv(): Promise<Map<string, TrackerEntry>> {
-  const content = await fs.readFile(TRACKER_TSV_PATH, "utf-8");
-  const lines = content.split("\n");
+async function loadTracker(): Promise<Map<string, TrackerEntry>> {
+  const content = await fs.readFile(TRACKER_JSON_PATH, "utf-8");
+  const raw = JSON.parse(content) as {
+    title: string;
+    ratings: Record<Difficulty, number>;
+    lamps: Record<Difficulty, string>;
+  }[];
+
   const entries = new Map<string, TrackerEntry>();
-
-  // Skip header line
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (line === undefined || line.trim() === "") {
-      continue;
-    }
-
-    const cols = line.split("\t");
-    const title = cols[COL.TITLE];
-    if (title === undefined || title.trim() === "") {
-      continue;
-    }
-
-    const entry: TrackerEntry = {
-      title: title.trim(),
-      ratings: {
-        SPN: Math.trunc(Number(cols[COL.SPN_RATING] ?? "0")),
-        SPH: Math.trunc(Number(cols[COL.SPH_RATING] ?? "0")),
-        SPA: Math.trunc(Number(cols[COL.SPA_RATING] ?? "0")),
-        SPL: Math.trunc(Number(cols[COL.SPL_RATING] ?? "0")),
-      },
+  for (const item of raw) {
+    entries.set(item.title, {
+      title: item.title,
+      ratings: item.ratings,
       lamps: {
-        SPN: parseLamp(cols[COL.SPN_LAMP]),
-        SPH: parseLamp(cols[COL.SPH_LAMP]),
-        SPA: parseLamp(cols[COL.SPA_LAMP]),
-        SPL: parseLamp(cols[COL.SPL_LAMP]),
+        SPN: parseLamp(item.lamps.SPN),
+        SPH: parseLamp(item.lamps.SPH),
+        SPA: parseLamp(item.lamps.SPA),
+        SPL: parseLamp(item.lamps.SPL),
       },
-    };
-
-    entries.set(entry.title, entry);
+    });
   }
 
   return entries;
@@ -312,9 +284,9 @@ async function fetchEndpoint(url: string): Promise<IidxApiEntry[]> {
 // --- Main ---
 
 export async function normalize(): Promise<void> {
-  console.log("Loading tracker.tsv...");
-  const tracker = await parseTrackerTsv();
-  console.log(`Loaded ${tracker.size} songs from tracker.tsv`);
+  console.log("Loading tracker.json...");
+  const tracker = await loadTracker();
+  console.log(`Loaded ${tracker.size} songs from tracker.json`);
 
   // Build normalized index for fast lookup
   const normalizedIndex = new Map<string, TrackerEntry>();
@@ -404,13 +376,28 @@ export async function normalize(): Promise<void> {
           ratingMismatch++;
         }
       } else {
-        // No match found — check if the title exists in tracker at all
-        const existsInTracker =
-          tracker.has(cleanTitle) ||
-          normalizedIndex.has(normalizeText(cleanTitle));
+        // No match found — check if a close candidate exists with correct rating
+        const candidates = findLevenshteinCandidates(
+          cleanTitle,
+          difficulty,
+          expectedRating,
+          tracker,
+          1,
+        );
+        const bestCandidate = candidates[0];
 
-        if (existsInTracker) {
-          // Title exists but no match — needs interactive resolution
+        const maxLen = Math.max(
+          normalizeText(cleanTitle).length,
+          bestCandidate !== undefined
+            ? normalizeText(bestCandidate.title).length
+            : 0,
+        );
+        const ratio = maxLen > 0 && bestCandidate !== undefined
+          ? bestCandidate.distance / maxLen
+          : 1;
+
+        if (bestCandidate !== undefined && ratio <= 0.30) {
+          // Close match exists — needs interactive resolution
           pending.push({
             key,
             apiEntry,
