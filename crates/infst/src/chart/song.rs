@@ -11,6 +11,8 @@ use crate::error::Result;
 use crate::play::UnlockType;
 use crate::process::{ByteBuffer, ReadMemory, decode_shift_jis};
 
+use super::encoding_fixes::{fix_artist_encoding, fix_title_encoding};
+
 /// Song metadata
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SongInfo {
@@ -85,11 +87,18 @@ impl SongInfo {
             return Ok(None);
         }
 
-        // Parse strings (Shift-JIS encoded)
-        let title = decode_shift_jis(buf.slice_at(Self::TITLE_OFFSET, Self::SLAB)?);
+        // Parse strings (Shift-JIS encoded, with encoding fixes for non-Shift-JIS characters)
+        let mut title = decode_shift_jis(buf.slice_at(Self::TITLE_OFFSET, Self::SLAB)?);
         let title_english = decode_shift_jis(buf.slice_at(Self::TITLE_ENGLISH_OFFSET, Self::SLAB)?);
         let genre = decode_shift_jis(buf.slice_at(Self::GENRE_OFFSET, Self::SLAB)?);
-        let artist = decode_shift_jis(buf.slice_at(Self::ARTIST_OFFSET, Self::SLAB)?);
+        let mut artist = decode_shift_jis(buf.slice_at(Self::ARTIST_OFFSET, Self::SLAB)?);
+
+        if let Some(fixed) = fix_title_encoding(&title) {
+            title = fixed;
+        }
+        if let Some(fixed) = fix_artist_encoding(&artist) {
+            artist = fixed;
+        }
 
         // Parse folder (1 byte)
         let folder = buffer[Self::FOLDER_OFFSET] as i32;
@@ -309,7 +318,10 @@ pub fn build_song_id_title_map<R: ReadMemory>(
 
         // Read title from text table
         if let Ok(title_bytes) = reader.read_bytes(text_addr, 64) {
-            let title_arc = decode_shift_jis(&title_bytes);
+            let mut title_arc = decode_shift_jis(&title_bytes);
+            if let Some(fixed) = fix_title_encoding(&title_arc) {
+                title_arc = fixed;
+            }
             let title = title_arc.trim();
             if !title.is_empty()
                 && title
@@ -432,6 +444,10 @@ pub fn load_song_database_from_tsv<P: AsRef<Path>>(
         if title.is_empty() {
             continue;
         }
+        let title = fix_title_encoding(title)
+            .map(|arc| arc.to_string())
+            .unwrap_or_else(|| title.to_string());
+        let title = title.as_str();
 
         // Parse difficulty levels
         let mut levels = [0u8; 10];

@@ -7,11 +7,13 @@
 //! - `UnlockData` - unlock state management
 
 mod difficulty;
+mod encoding_fixes;
 mod song;
 mod types;
 mod unlock;
 
 pub use difficulty::*;
+pub use encoding_fixes::*;
 pub use song::*;
 pub use types::*;
 pub use unlock::*;
