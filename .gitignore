@@ -9,6 +9,9 @@ sessions/
 tracker.tsv
 .infst-cache.json
 
+# Wrangler local state
+web/.wrangler/
+
 # Node modules
 web/node_modules/
 scripts/normalize/node_modules/
