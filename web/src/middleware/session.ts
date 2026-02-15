@@ -10,7 +10,7 @@ import { users } from "../db/schema";
 interface SessionUser {
   id: number;
   email: string;
-  username: string | null;
+  username: string;
   apiToken: string | null;
   isPublic: boolean;
 }

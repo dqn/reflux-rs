@@ -7,13 +7,14 @@ import { optionalSession, sessionAuth } from "../middleware/session";
 import { users, charts, lamps } from "../db/schema";
 import { Layout } from "../components/Layout";
 import { LoginPage } from "../components/LoginPage";
+import { RegisterPage } from "../components/RegisterPage";
 import { SettingsPage } from "../components/SettingsPage";
 import { TableView } from "../components/TableView";
 
 interface SessionUser {
   id: number;
   email: string;
-  username: string | null;
+  username: string;
   apiToken: string | null;
   isPublic: boolean;
 }
@@ -77,6 +78,11 @@ pageRoutes.get("/", optionalSession, (c) => {
 // GET /login - Login page
 pageRoutes.get("/login", (c) => {
   return c.html(<LoginPage />);
+});
+
+// GET /register - Registration page
+pageRoutes.get("/register", (c) => {
+  return c.html(<RegisterPage />);
 });
 
 // GET /settings - Settings page (session required)

@@ -9,20 +9,13 @@ import { sql } from "drizzle-orm";
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   email: text("email").notNull().unique(),
-  username: text("username").unique(),
+  username: text("username").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
   apiToken: text("api_token").unique(),
   isPublic: integer("is_public", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),
-});
-
-export const magicLinks = sqliteTable("magic_links", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  email: text("email").notNull(),
-  token: text("token").notNull().unique(),
-  expiresAt: text("expires_at").notNull(),
-  usedAt: text("used_at"),
 });
 
 export const deviceCodes = sqliteTable("device_codes", {

@@ -1,158 +1,163 @@
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import type { Env } from "../lib/types";
 import { generateToken, generateUserCode } from "../lib/token";
-import { sendMagicLinkEmail } from "../lib/email";
-import { users, magicLinks, deviceCodes } from "../db/schema";
+import { hashPassword, verifyPassword } from "../lib/password";
+import { users, deviceCodes } from "../db/schema";
 import {
   sessionAuth,
   createSessionCookie,
   setSessionCookie,
 } from "../middleware/session";
-import { RegisterPage } from "../components/RegisterPage";
 import { DevicePage } from "../components/DevicePage";
+
+const RESERVED_USERNAMES = ["login", "register", "settings", "auth", "api", "admin"];
 
 export const authRoutes = new Hono<{
   Bindings: Env;
-  Variables: { user: { id: number; email: string; username: string | null; apiToken: string | null; isPublic: boolean } };
+  Variables: { user: { id: number; email: string; username: string; apiToken: string | null; isPublic: boolean } };
 }>();
 
-// POST /auth/login - Send magic link email
+// POST /auth/login - Email + password login
 authRoutes.post("/login", async (c) => {
-  const body = await c.req.json<{ email?: string }>();
-  if (!body.email) {
-    return c.json({ error: "Email is required" }, 400);
-  }
+  const body = await c.req.parseBody();
+  const email = body["email"];
+  const password = body["password"];
 
-  const token = generateToken();
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-
-  const db = drizzle(c.env.DB);
-  await db.insert(magicLinks).values({
-    email: body.email,
-    token,
-    expiresAt,
-  });
-
-  const magicLinkUrl = `${c.env.APP_URL}/auth/verify?token=${token}`;
-  await sendMagicLinkEmail(body.email, magicLinkUrl, c.env.RESEND_API_KEY);
-
-  return c.json({ ok: true });
-});
-
-// GET /auth/verify - Verify magic link token
-authRoutes.get("/verify", async (c) => {
-  const token = c.req.query("token");
-  if (!token) {
-    return c.text("Invalid link", 400);
+  if (typeof email !== "string" || typeof password !== "string") {
+    const { LoginPage } = await import("../components/LoginPage");
+    return c.html(<LoginPage error="Email and password are required" />);
   }
 
   const db = drizzle(c.env.DB);
   const result = await db
     .select()
-    .from(magicLinks)
-    .where(eq(magicLinks.token, token))
-    .limit(1);
-
-  const link = result[0];
-  if (!link) {
-    return c.text("Invalid or expired link", 400);
-  }
-
-  if (link.usedAt) {
-    return c.text("Link already used", 400);
-  }
-
-  if (new Date(link.expiresAt) < new Date()) {
-    return c.text("Link expired", 400);
-  }
-
-  // Mark as used
-  await db
-    .update(magicLinks)
-    .set({ usedAt: new Date().toISOString() })
-    .where(eq(magicLinks.id, link.id));
-
-  // Find or create user
-  const existingUsers = await db
-    .select()
     .from(users)
-    .where(eq(users.email, link.email))
+    .where(eq(users.email, email))
     .limit(1);
 
-  let user = existingUsers[0];
+  const user = result[0];
 
   if (!user) {
-    const apiToken = generateToken();
-    const inserted = await db
-      .insert(users)
-      .values({
-        email: link.email,
-        apiToken,
-      })
-      .returning();
-    user = inserted[0];
+    // Timing attack mitigation: compute a dummy hash
+    await hashPassword(password);
+    const { LoginPage } = await import("../components/LoginPage");
+    return c.html(<LoginPage error="Invalid email or password" values={{ email }} />);
   }
 
-  if (!user) {
-    return c.text("Failed to create user", 500);
+  const valid = await verifyPassword(password, user.passwordHash);
+  if (!valid) {
+    const { LoginPage } = await import("../components/LoginPage");
+    return c.html(<LoginPage error="Invalid email or password" values={{ email }} />);
   }
 
-  // Issue session cookie
   const sessionToken = await createSessionCookie(user.id, c.env.JWT_SECRET);
   setSessionCookie(c, sessionToken);
-
-  // Redirect to username setup if needed, otherwise home
-  if (!user.username) {
-    return c.redirect("/auth/register");
-  }
 
   return c.redirect("/");
 });
 
-// GET /auth/register - Username registration page
-authRoutes.get("/register", sessionAuth, (c) => {
-  return c.html(<RegisterPage />);
-});
-
-// POST /auth/register - Handle username registration
-authRoutes.post("/register", sessionAuth, async (c) => {
+// POST /auth/register - Email + password + username registration
+authRoutes.post("/register", async (c) => {
   const body = await c.req.parseBody();
+  const email = body["email"];
+  const password = body["password"];
   const username = body["username"];
-  if (typeof username !== "string" || !username.trim()) {
-    return c.html(<RegisterPage error="Username is required" />);
+
+  if (
+    typeof email !== "string" ||
+    typeof password !== "string" ||
+    typeof username !== "string"
+  ) {
+    const { RegisterPage } = await import("../components/RegisterPage");
+    return c.html(<RegisterPage error="All fields are required" />);
   }
 
-  const trimmed = username.trim().toLowerCase();
-  if (!/^[a-z0-9_-]{3,20}$/.test(trimmed)) {
+  const values = { email, username };
+
+  // Validate password
+  if (password.length < 8 || password.length > 72) {
+    const { RegisterPage } = await import("../components/RegisterPage");
     return c.html(
-      <RegisterPage error="Username must be 3-20 characters (a-z, 0-9, -, _)" />,
+      <RegisterPage error="Password must be 8-72 characters" values={values} />,
     );
   }
 
-  // Reserved paths
-  const reserved = ["login", "settings", "auth", "api", "admin"];
-  if (reserved.includes(trimmed)) {
-    return c.html(<RegisterPage error="This username is not available" />);
+  // Validate username
+  const trimmed = username.trim().toLowerCase();
+  if (!/^[a-z0-9_-]{3,20}$/.test(trimmed)) {
+    const { RegisterPage } = await import("../components/RegisterPage");
+    return c.html(
+      <RegisterPage
+        error="Username must be 3-20 characters (a-z, 0-9, -, _)"
+        values={values}
+      />,
+    );
+  }
+
+  if (RESERVED_USERNAMES.includes(trimmed)) {
+    const { RegisterPage } = await import("../components/RegisterPage");
+    return c.html(
+      <RegisterPage error="This username is not available" values={values} />,
+    );
   }
 
   const db = drizzle(c.env.DB);
 
-  // Check uniqueness
-  const existing = await db
+  // Check email uniqueness
+  const existingEmail = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  if (existingEmail.length > 0) {
+    const { RegisterPage } = await import("../components/RegisterPage");
+    return c.html(
+      <RegisterPage error="This email is already registered" values={values} />,
+    );
+  }
+
+  // Check username uniqueness
+  const existingUsername = await db
     .select()
     .from(users)
     .where(eq(users.username, trimmed))
     .limit(1);
 
-  if (existing.length > 0) {
-    return c.html(<RegisterPage error="Username already taken" />);
+  if (existingUsername.length > 0) {
+    const { RegisterPage } = await import("../components/RegisterPage");
+    return c.html(
+      <RegisterPage error="Username already taken" values={values} />,
+    );
   }
 
-  const user = c.get("user");
-  await db.update(users).set({ username: trimmed }).where(eq(users.id, user.id));
+  const passwordHash = await hashPassword(password);
+  const apiToken = generateToken();
+
+  const inserted = await db
+    .insert(users)
+    .values({
+      email,
+      username: trimmed,
+      passwordHash,
+      apiToken,
+    })
+    .returning();
+
+  const user = inserted[0];
+  if (!user) {
+    const { RegisterPage } = await import("../components/RegisterPage");
+    return c.html(
+      <RegisterPage error="Failed to create account" values={values} />,
+    );
+  }
+
+  // Auto-login after registration
+  const sessionToken = await createSessionCookie(user.id, c.env.JWT_SECRET);
+  setSessionCookie(c, sessionToken);
 
   return c.redirect("/");
 });
