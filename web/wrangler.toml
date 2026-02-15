@@ -1,0 +1,12 @@
+name = "infst"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+JWT_SECRET = "change-me-in-production"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "infst-db"
+database_id = "placeholder-change-me"
+migrations_dir = "drizzle"
