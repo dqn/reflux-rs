@@ -9,6 +9,13 @@ sessions/
 tracker.tsv
 .infst-cache.json
 
+# Node modules
+web/node_modules/
+scripts/normalize/node_modules/
+
+# Generated files
+scripts/normalize/title-mapping.json
+
 # Debug output files
 dump_output.json
 explore_output.txt
