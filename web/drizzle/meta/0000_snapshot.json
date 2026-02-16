@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "501088b1-aadb-492c-a7f5-51078fb6b081",
+  "id": "085f089d-d735-4c0d-bc06-250d07b29f17",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "charts": {
@@ -21,18 +21,18 @@
           "notNull": true,
           "autoincrement": false
         },
+        "song_id": {
+          "name": "song_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "title": {
           "name": "title",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "infinitas_title": {
-          "name": "infinitas_title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "difficulty": {
@@ -55,14 +55,22 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
-        "charts_table_key_title_idx": {
-          "name": "charts_table_key_title_idx",
+        "charts_table_key_song_diff_idx": {
+          "name": "charts_table_key_song_diff_idx",
           "columns": [
             "table_key",
-            "title"
+            "song_id",
+            "difficulty"
           ],
           "isUnique": true
         }
@@ -142,9 +150,9 @@
           "notNull": true,
           "autoincrement": false
         },
-        "infinitas_title": {
-          "name": "infinitas_title",
-          "type": "text",
+        "song_id": {
+          "name": "song_id",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -187,16 +195,55 @@
         }
       },
       "indexes": {
-        "lamps_user_title_diff_idx": {
-          "name": "lamps_user_title_diff_idx",
+        "lamps_user_song_diff_idx": {
+          "name": "lamps_user_song_diff_idx",
           "columns": [
             "user_id",
-            "infinitas_title",
+            "song_id",
             "difficulty"
           ],
           "isUnique": true
+        },
+        "lamps_user_updated_at_idx": {
+          "name": "lamps_user_updated_at_idx",
+          "columns": [
+            "user_id",
+            "updated_at"
+          ],
+          "isUnique": false
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "rate_limits": {
+      "name": "rate_limits",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -235,6 +282,13 @@
         },
         "api_token": {
           "name": "api_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "api_token_created_at": {
+          "name": "api_token_created_at",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

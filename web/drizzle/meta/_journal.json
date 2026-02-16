@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1771194989877,
-      "tag": "0000_broken_deadpool",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1771210163518,
-      "tag": "0001_huge_stick",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1771269334629,
-      "tag": "0002_brave_jackal",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1771286400000,
-      "tag": "0003_song_id_lamps",
+      "when": 1771283332025,
+      "tag": "0000_bright_jackpot",
       "breakpoints": true
     }
   ]
