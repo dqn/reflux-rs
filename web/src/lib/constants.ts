@@ -23,6 +23,7 @@ export const RESERVED_USERNAMES = [
   "api",
   "admin",
   "guide",
+  "icons",
 ];
 
 // Rate limiting

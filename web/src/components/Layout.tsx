@@ -15,6 +15,12 @@ export const Layout: FC<LayoutProps> = ({ title, user, children }) => {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#111111" />
+        <meta name="description" content="IIDX INFINITAS Score Tracker" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <title>{pageTitle}</title>
         <style>{raw(`
           *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -118,6 +124,11 @@ export const Layout: FC<LayoutProps> = ({ title, user, children }) => {
         <div class="container">
           {children}
         </div>
+        {raw(`<script>
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("/sw.js");
+          }
+        </script>`)}
       </body>
     </html>
   );

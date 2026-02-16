@@ -18,3 +18,6 @@ binding = "DB"
 database_name = "infst-db"
 database_id = "eea20de0-326f-4bb0-829f-646772d6b6d0"
 migrations_dir = "drizzle"
+
+[assets]
+directory = "./public"
