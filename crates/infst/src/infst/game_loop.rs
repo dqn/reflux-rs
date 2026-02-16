@@ -265,9 +265,14 @@ impl Infst {
             return;
         };
 
+        // Only level 11/12 charts are synced to the web API.
+        if !matches!(play_data.chart.level, 11 | 12) {
+            return;
+        }
+
         let endpoint = api_config.endpoint.clone();
         let token = api_config.token.clone();
-        let title = play_data.chart.title.to_string();
+        let song_id = play_data.chart.song_id;
         let difficulty = play_data.chart.difficulty.short_name().to_string();
         let lamp = play_data.lamp.short_name().to_string();
         let ex_score = play_data.ex_score;
@@ -277,7 +282,7 @@ impl Infst {
             if let Err(e) = send_lamp_request(
                 &endpoint,
                 &token,
-                &title,
+                song_id,
                 &difficulty,
                 &lamp,
                 ex_score,
@@ -461,12 +466,7 @@ impl Infst {
         let lamp_val = reader.read_i32(self.offsets.play_data + play::LAMP)?;
 
         let difficulty = Difficulty::from_u8(difficulty_val as u8).unwrap_or(Difficulty::SpN);
-        let mut lamp = Lamp::from_u8(lamp_val as u8).unwrap_or(Lamp::NoPlay);
-
-        // Upgrade to PFC if applicable
-        if judge.is_pfc() && lamp == Lamp::FullCombo {
-            lamp = Lamp::Pfc;
-        }
+        let lamp = Lamp::from_u8(lamp_val as u8).unwrap_or(Lamp::NoPlay);
 
         // Calculate EX score
         let ex_score = judge.ex_score();
@@ -642,7 +642,7 @@ impl Infst {
 fn send_lamp_request(
     endpoint: &str,
     token: &str,
-    title: &str,
+    song_id: u32,
     difficulty: &str,
     lamp: &str,
     ex_score: u32,
@@ -650,7 +650,7 @@ fn send_lamp_request(
 ) -> anyhow::Result<()> {
     let url = format!("{}/api/lamps", endpoint.trim_end_matches('/'));
     let body = serde_json::json!({
-        "infinitasTitle": title,
+        "songId": song_id,
         "difficulty": difficulty,
         "lamp": lamp,
         "exScore": ex_score,

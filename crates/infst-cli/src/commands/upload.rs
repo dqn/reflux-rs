@@ -10,6 +10,8 @@ use super::login::load_credentials;
 
 #[derive(Deserialize)]
 struct MappingEntry {
+    #[serde(rename = "songId")]
+    song_id: u32,
     #[serde(rename = "infinitasTitle")]
     infinitas_title: String,
     difficulty: String,
@@ -17,8 +19,8 @@ struct MappingEntry {
 
 #[derive(Serialize)]
 struct LampEntry {
-    #[serde(rename = "infinitasTitle")]
-    infinitas_title: String,
+    #[serde(rename = "songId")]
+    song_id: u32,
     difficulty: String,
     lamp: String,
     #[serde(rename = "exScore")]
@@ -42,13 +44,13 @@ pub fn run(
     let mapping: HashMap<String, Vec<MappingEntry>> =
         serde_json::from_str(&mapping_content).context("Failed to parse title mapping JSON")?;
 
-    // Build lookup set: (infinitasTitle, difficulty) -> true
-    let mut title_diff_set: HashMap<(String, String), bool> = HashMap::new();
+    // Build lookup map: (infinitasTitle, difficulty) -> songId
+    let mut title_diff_to_song_id: HashMap<(String, String), u32> = HashMap::new();
     for entries in mapping.values() {
         for entry in entries {
-            title_diff_set.insert(
+            title_diff_to_song_id.insert(
                 (entry.infinitas_title.clone(), entry.difficulty.clone()),
-                true,
+                entry.song_id,
             );
         }
     }
@@ -60,6 +62,10 @@ pub fn run(
 
     let header = lines.next().context("Tracker TSV is empty")?;
     let columns: Vec<&str> = header.split('\t').collect();
+    let title_col = columns
+        .iter()
+        .position(|c| *c == "Title")
+        .context("Title column not found in tracker TSV")?;
 
     // Find column indices for each difficulty
     let difficulty_columns = find_difficulty_columns(&columns);
@@ -72,14 +78,23 @@ pub fn run(
             continue;
         }
 
-        let title = fields.get(1).unwrap_or(&"").to_string();
+        let title = fields.get(title_col).unwrap_or(&"").to_string();
         if title.is_empty() {
             continue;
         }
 
         for (diff_name, col_indices) in &difficulty_columns {
-            // Check if this (title, difficulty) is in the mapping
-            if !title_diff_set.contains_key(&(title.clone(), diff_name.clone())) {
+            let Some(&song_id) = title_diff_to_song_id.get(&(title.clone(), diff_name.clone()))
+            else {
+                continue;
+            };
+
+            let rating: u32 = fields
+                .get(col_indices.rating)
+                .unwrap_or(&"0")
+                .parse()
+                .unwrap_or(0);
+            if rating != 11 && rating != 12 {
                 continue;
             }
 
@@ -101,7 +116,7 @@ pub fn run(
             }
 
             entries.push(LampEntry {
-                infinitas_title: title.clone(),
+                song_id,
                 difficulty: diff_name.clone(),
                 lamp,
                 ex_score,
@@ -162,6 +177,7 @@ pub fn resolve_credentials(
 }
 
 struct DifficultyColumns {
+    rating: usize,
     lamp: usize,
     ex_score: usize,
     miss_count: usize,
@@ -172,20 +188,23 @@ fn find_difficulty_columns(columns: &[&str]) -> Vec<(String, DifficultyColumns)>
     let mut result = Vec::new();
 
     for diff in &difficulties {
+        let rating_name = format!("{}_Rating", diff);
         let lamp_name = format!("{}_Lamp", diff);
         let ex_score_name = format!("{}_EXScore", diff);
         let miss_count_name = format!("{}_MissCount", diff);
 
+        let rating_idx = columns.iter().position(|c| *c == rating_name);
         let lamp_idx = columns.iter().position(|c| *c == lamp_name);
         let ex_score_idx = columns.iter().position(|c| *c == ex_score_name);
         let miss_count_idx = columns.iter().position(|c| *c == miss_count_name);
 
-        if let (Some(lamp), Some(ex_score), Some(miss_count)) =
-            (lamp_idx, ex_score_idx, miss_count_idx)
+        if let (Some(rating), Some(lamp), Some(ex_score), Some(miss_count)) =
+            (rating_idx, lamp_idx, ex_score_idx, miss_count_idx)
         {
             result.push((
                 diff.to_string(),
                 DifficultyColumns {
+                    rating,
                     lamp,
                     ex_score,
                     miss_count,

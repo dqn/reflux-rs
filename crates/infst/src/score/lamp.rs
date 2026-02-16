@@ -35,8 +35,6 @@ pub enum Lamp {
     ExHardClear = 6,
     #[strum(serialize = "FC")]
     FullCombo = 7,
-    #[strum(serialize = "PFC")]
-    Pfc = 8,
 }
 
 impl Lamp {
@@ -58,7 +56,7 @@ impl Lamp {
             Self::Clear => "CLEAR",
             Self::HardClear => "HARD CLEAR",
             Self::ExHardClear => "EX HARD CLEAR",
-            Self::FullCombo | Self::Pfc => "FULL COMBO",
+            Self::FullCombo => "FULL COMBO",
         }
     }
 }
@@ -75,7 +73,6 @@ mod tests {
 
     #[test]
     fn test_lamp_ordering() {
-        assert!(Lamp::Pfc > Lamp::FullCombo);
         assert!(Lamp::FullCombo > Lamp::ExHardClear);
         assert!(Lamp::Failed < Lamp::Clear);
     }

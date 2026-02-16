@@ -1,7 +1,12 @@
 (function() {
   var container = document.getElementById('table-data');
+  if (!container) return;
+
   var username = container.dataset.username;
-  var LAMP_STYLES = JSON.parse(container.dataset.lampStyles);
+  var lampStyles = container.dataset.lampStyles;
+  if (!username || !lampStyles) return;
+
+  var LAMP_STYLES = JSON.parse(lampStyles);
   var lastPoll = new Date().toISOString();
 
   function updateCell(key, lamp) {
@@ -27,7 +32,7 @@
       .then(function(data) {
         if (data.lamps && data.lamps.length > 0) {
           data.lamps.forEach(function(l) {
-            updateCell(l.infinitasTitle + ":" + l.difficulty, l.lamp);
+            updateCell(l.songId + ":" + l.difficulty, l.lamp);
           });
           lastPoll = new Date().toISOString();
         }

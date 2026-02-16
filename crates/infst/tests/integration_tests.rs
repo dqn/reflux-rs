@@ -239,7 +239,6 @@ mod lamp_tests {
         assert!(Lamp::Clear < Lamp::HardClear);
         assert!(Lamp::HardClear < Lamp::ExHardClear);
         assert!(Lamp::ExHardClear < Lamp::FullCombo);
-        assert!(Lamp::FullCombo < Lamp::Pfc);
     }
 
     #[test]

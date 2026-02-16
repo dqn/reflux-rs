@@ -36,15 +36,19 @@ export const charts = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     tableKey: text("table_key").notNull(),
+    songId: integer("song_id").notNull(),
     title: text("title").notNull(),
-    infinitasTitle: text("infinitas_title"),
     difficulty: text("difficulty").notNull(),
     tier: text("tier").notNull(),
     attributes: text("attributes"),
     sortOrder: integer("sort_order"),
   },
   (table) => [
-    uniqueIndex("charts_table_key_title_idx").on(table.tableKey, table.title),
+    uniqueIndex("charts_table_key_song_diff_idx").on(
+      table.tableKey,
+      table.songId,
+      table.difficulty,
+    ),
   ],
 );
 
@@ -53,7 +57,7 @@ export const lamps = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     userId: integer("user_id").notNull(),
-    infinitasTitle: text("infinitas_title").notNull(),
+    songId: integer("song_id").notNull(),
     difficulty: text("difficulty").notNull(),
     lamp: text("lamp").notNull(),
     exScore: integer("ex_score"),
@@ -63,9 +67,9 @@ export const lamps = sqliteTable(
       .default(sql`(datetime('now'))`),
   },
   (table) => [
-    uniqueIndex("lamps_user_title_diff_idx").on(
+    uniqueIndex("lamps_user_song_diff_idx").on(
       table.userId,
-      table.infinitasTitle,
+      table.songId,
       table.difficulty,
     ),
     index("lamps_user_updated_at_idx").on(table.userId, table.updatedAt),

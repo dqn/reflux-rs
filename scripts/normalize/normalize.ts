@@ -16,10 +16,10 @@ type Lamp =
   | "CLEAR"
   | "HARD"
   | "EX HARD"
-  | "FC"
-  | "PFC";
+  | "FC";
 
 interface TrackerEntry {
+  songId: number;
   title: string;
   ratings: Record<Difficulty, number>;
   lamps: Record<Difficulty, Lamp>;
@@ -32,6 +32,7 @@ interface IidxApiEntry {
 }
 
 interface MappedEntry {
+  songId: number;
   title: string;
   infinitasTitle: string;
   difficulty: Difficulty;
@@ -122,6 +123,7 @@ function analyzeSuffix(title: string): SuffixAnalysis {
 
 function parseLamp(value: string | undefined): Lamp {
   const trimmed = (value ?? "").trim();
+
   const validLamps: Lamp[] = [
     "NO PLAY",
     "FAILED",
@@ -131,7 +133,6 @@ function parseLamp(value: string | undefined): Lamp {
     "HARD",
     "EX HARD",
     "FC",
-    "PFC",
   ];
   if (validLamps.includes(trimmed as Lamp)) {
     return trimmed as Lamp;
@@ -142,6 +143,7 @@ function parseLamp(value: string | undefined): Lamp {
 async function loadTracker(): Promise<Map<string, TrackerEntry>> {
   const content = await fs.readFile(TRACKER_JSON_PATH, "utf-8");
   const raw = JSON.parse(content) as {
+    songId: number;
     title: string;
     ratings: Record<Difficulty, number>;
     lamps: Record<Difficulty, string>;
@@ -150,6 +152,7 @@ async function loadTracker(): Promise<Map<string, TrackerEntry>> {
   const entries = new Map<string, TrackerEntry>();
   for (const item of raw) {
     entries.set(item.title, {
+      songId: item.songId,
       title: item.title,
       ratings: item.ratings,
       lamps: {
@@ -168,6 +171,7 @@ async function loadTracker(): Promise<Map<string, TrackerEntry>> {
 
 interface MatchResult {
   trackerTitle: string;
+  songId: number;
   rating: number;
 }
 
@@ -180,7 +184,11 @@ function findExactMatch(
   if (entry === undefined) {
     return undefined;
   }
-  return { trackerTitle: entry.title, rating: entry.ratings[difficulty] };
+  return {
+    trackerTitle: entry.title,
+    songId: entry.songId,
+    rating: entry.ratings[difficulty],
+  };
 }
 
 function findNormalizedMatch(
@@ -193,10 +201,15 @@ function findNormalizedMatch(
   if (entry === undefined) {
     return undefined;
   }
-  return { trackerTitle: entry.title, rating: entry.ratings[difficulty] };
+  return {
+    trackerTitle: entry.title,
+    songId: entry.songId,
+    rating: entry.ratings[difficulty],
+  };
 }
 
 interface LevenshteinCandidate {
+  songId: number;
   title: string;
   rating: number;
   distance: number;
@@ -220,6 +233,7 @@ function findLevenshteinCandidates(
     const normalizedEntry = normalizeText(entry.title);
     const dist = distance(normalizedInput, normalizedEntry);
     candidates.push({
+      songId: entry.songId,
       title: entry.title,
       rating: entry.ratings[difficulty],
       distance: dist,
@@ -238,7 +252,7 @@ async function resolveInteractively(
   expectedRating: number,
   tracker: Map<string, TrackerEntry>,
   rl: readline.Interface,
-): Promise<string | undefined> {
+): Promise<MatchResult | undefined> {
   const { cleanTitle } = analyzeSuffix(apiTitle);
   const candidates = findLevenshteinCandidates(
     cleanTitle,
@@ -256,7 +270,7 @@ async function resolveInteractively(
   for (let i = 0; i < candidates.length; i++) {
     const c = candidates[i]!;
     console.log(
-      `    ${i + 1}. ${c.title} (${difficulty} Rating: ${c.rating}, dist: ${c.distance})`,
+      `    ${i + 1}. ${c.title} (#${c.songId}, ${difficulty} Rating: ${c.rating}, dist: ${c.distance})`,
     );
   }
   console.log(`    ${candidates.length + 1}. Skip`);
@@ -266,7 +280,11 @@ async function resolveInteractively(
 
   if (choice >= 1 && choice <= candidates.length) {
     const selected = candidates[choice - 1]!;
-    return selected.title;
+    return {
+      trackerTitle: selected.title,
+      songId: selected.songId,
+      rating: selected.rating,
+    };
   }
 
   return undefined;
@@ -357,6 +375,7 @@ export async function normalize(): Promise<void> {
             `\x1b[32m\u2713\x1b[0m ${apiEntry.title} \u2192 ${match.trackerTitle} (${difficulty} \u2606${match.rating})`,
           );
           result[key].push({
+            songId: match.songId,
             title: apiEntry.title,
             infinitasTitle: match.trackerTitle,
             difficulty,
@@ -445,11 +464,12 @@ export async function normalize(): Promise<void> {
 
       if (resolved !== undefined) {
         console.log(
-          `\x1b[32m\u2713\x1b[0m Resolved: ${p.apiEntry.title} \u2192 ${resolved}`,
+          `\x1b[32m\u2713\x1b[0m Resolved: ${p.apiEntry.title} \u2192 ${resolved.trackerTitle}`,
         );
         result[p.key].push({
+          songId: resolved.songId,
           title: p.apiEntry.title,
-          infinitasTitle: resolved,
+          infinitasTitle: resolved.trackerTitle,
           difficulty: p.difficulty,
           tier: p.apiEntry.tier,
           attributes: p.apiEntry.attributes,

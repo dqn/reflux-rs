@@ -308,7 +308,7 @@ mod play_data {
             .with_size(0x100)
             .write_i32(0, 50000) // max valid song_id
             .write_i32(4, 9) // max difficulty
-            .write_i32(24, 7) // lamp (PFC)
+            .write_i32(24, 7) // lamp (FC)
             .build();
 
         assert!(reader.validate_play_data_address(0x1000));

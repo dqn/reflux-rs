@@ -8,7 +8,6 @@ export const LAMP_VALUES = [
   "HARD",
   "EX HARD",
   "FC",
-  "PFC",
 ] as const;
 
 export type LampValue = (typeof LAMP_VALUES)[number];
@@ -22,7 +21,6 @@ const LAMP_ORDER: Record<LampValue, number> = {
   HARD: 5,
   "EX HARD": 6,
   FC: 7,
-  PFC: 8,
 };
 
 export interface LampStyle {
@@ -40,10 +38,6 @@ const LAMP_STYLES: Record<LampValue, LampStyle> = {
   HARD: { background: "#e0e0e0", color: "#111", border: "1px solid #555" },
   "EX HARD": { background: "#d4aa00", color: "#000" },
   FC: { background: "#3db8c9", color: "#000" },
-  PFC: {
-    background: "linear-gradient(135deg, #d4aa00, #e8cc55, #d4aa00)",
-    color: "#000",
-  },
 };
 
 export function getLampOrder(lamp: string): number {

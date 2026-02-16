@@ -40,13 +40,6 @@ impl PlayData {
         let ratio = ex_score as f64 / max_ex as f64;
         Grade::from_score_ratio(ratio)
     }
-
-    /// Upgrade lamp to PFC if applicable
-    pub fn upgrade_lamp_if_pfc(&mut self) {
-        if self.judge.is_pfc() && self.lamp == Lamp::FullCombo {
-            self.lamp = Lamp::Pfc;
-        }
-    }
 }
 
 // DJ Points calculation constants
@@ -75,7 +68,7 @@ pub fn calculate_dj_points(ex_score: u32, grade: Grade, lamp: Lamp) -> f64 {
         0
     };
 
-    // Lamp bonus: NC/EC=5, HC=15, EX=20, FC=25, PFC=30
+    // Lamp bonus: NC/EC=5, HC=15, EX=20, FC=25
     let lamp_val = lamp as i32;
     let lamp_ac_val = Lamp::AssistClear as i32;
     let lamp_hc_val = Lamp::HardClear as i32;
@@ -107,11 +100,11 @@ mod tests {
 
     #[test]
     fn test_calculate_dj_points() {
-        // AAA + PFC should give maximum bonus
-        let djp = calculate_dj_points(2000, Grade::Aaa, Lamp::Pfc);
-        // C = 10 + 2*5 = 20, L = 6*5 + 5 = 35
-        // DJ Points = 2000 * (100 + 20 + 35) / 10000 = 2000 * 155 / 10000 = 31.0
-        assert!((djp - 31.0).abs() < 0.01);
+        // AAA + FC should give maximum lamp bonus
+        let djp = calculate_dj_points(2000, Grade::Aaa, Lamp::FullCombo);
+        // C = 10 + 2*5 = 20, L = 5*5 + 5 = 30
+        // DJ Points = 2000 * (100 + 20 + 30) / 10000 = 2000 * 150 / 10000 = 30.0
+        assert!((djp - 30.0).abs() < 0.01);
 
         // A + Clear
         let djp = calculate_dj_points(1000, Grade::A, Lamp::Clear);

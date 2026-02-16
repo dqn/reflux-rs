@@ -14,10 +14,10 @@ type Lamp =
   | "CLEAR"
   | "HARD"
   | "EX HARD"
-  | "FC"
-  | "PFC";
+  | "FC";
 
 interface TrackerEntry {
+  songId: number;
   title: string;
   ratings: Record<Difficulty, number>;
   lamps: Record<Difficulty, Lamp>;
@@ -33,15 +33,16 @@ const OUTPUT_PATH = path.resolve(__dirname, "tracker.json");
 
 // Column indices in tracker.tsv (0-based)
 const COL = {
-  TITLE: 0,
-  SPN_RATING: 17,
-  SPN_LAMP: 18,
-  SPH_RATING: 25,
-  SPH_LAMP: 26,
-  SPA_RATING: 33,
-  SPA_LAMP: 34,
-  SPL_RATING: 41,
-  SPL_LAMP: 42,
+  SONG_ID: 0,
+  TITLE: 1,
+  SPN_RATING: 18,
+  SPN_LAMP: 19,
+  SPH_RATING: 26,
+  SPH_LAMP: 27,
+  SPA_RATING: 34,
+  SPA_LAMP: 35,
+  SPL_RATING: 42,
+  SPL_LAMP: 43,
 } as const;
 
 // Mojibake fixes: full title mapping (tracker title -> correct Unicode title)
@@ -83,6 +84,7 @@ const MOJIBAKE_FIXES: ReadonlyMap<string, string> = new Map([
 
 function parseLamp(value: string | undefined): Lamp {
   const trimmed = (value ?? "").trim();
+
   const validLamps: Lamp[] = [
     "NO PLAY",
     "FAILED",
@@ -92,7 +94,6 @@ function parseLamp(value: string | undefined): Lamp {
     "HARD",
     "EX HARD",
     "FC",
-    "PFC",
   ];
   if (validLamps.includes(trimmed as Lamp)) {
     return trimmed as Lamp;
@@ -124,6 +125,11 @@ async function buildTracker(): Promise<void> {
     }
     title = title.trim();
 
+    const songId = Math.trunc(Number(cols[COL.SONG_ID] ?? "0"));
+    if (!Number.isInteger(songId) || songId <= 0) {
+      continue;
+    }
+
     // Apply mojibake fix
     const fixed = MOJIBAKE_FIXES.get(title);
     if (fixed !== undefined) {
@@ -133,6 +139,7 @@ async function buildTracker(): Promise<void> {
     }
 
     entries.push({
+      songId,
       title,
       ratings: {
         SPN: Math.trunc(Number(cols[COL.SPN_RATING] ?? "0")),

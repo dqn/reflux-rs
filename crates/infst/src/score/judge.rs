@@ -55,11 +55,6 @@ impl Judge {
     /// Measure end: 16-17 (p1, p2)
     pub const WORD_SIZE: u64 = 4;
 
-    /// Check if this is a Perfect Full Combo (no good/bad/poor)
-    pub fn is_pfc(&self) -> bool {
-        self.good == 0 && self.bad == 0 && self.poor == 0
-    }
-
     /// Calculate EX score (pgreat * 2 + great)
     pub fn ex_score(&self) -> u32 {
         self.pgreat * 2 + self.great
@@ -113,29 +108,6 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(pj.total_notes(), 167);
-    }
-
-    #[test]
-    fn test_judge_is_pfc() {
-        let pfc = Judge {
-            pgreat: 1000,
-            great: 100,
-            good: 0,
-            bad: 0,
-            poor: 0,
-            ..Default::default()
-        };
-        assert!(pfc.is_pfc());
-
-        let not_pfc = Judge {
-            pgreat: 1000,
-            great: 100,
-            good: 1,
-            bad: 0,
-            poor: 0,
-            ..Default::default()
-        };
-        assert!(!not_pfc.is_pfc());
     }
 
     #[test]

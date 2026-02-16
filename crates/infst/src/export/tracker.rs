@@ -42,6 +42,7 @@ pub struct ExportDataJson {
 /// Generate detailed tracker TSV header
 pub fn format_tracker_tsv_header() -> String {
     let mut columns = vec![
+        "Song ID".to_string(),
         "Title".to_string(),
         "Type".to_string(),
         "Label".to_string(),
@@ -104,6 +105,9 @@ fn generate_tracker_entry(
     let scores = score_map.get(song_id);
 
     let mut columns = Vec::new();
+
+    // Song ID
+    columns.push(song_id.to_string());
 
     // Title
     columns.push(song.title.to_string());
@@ -394,6 +398,7 @@ mod tests {
     #[test]
     fn test_format_tracker_tsv_header() {
         let header = format_tracker_tsv_header();
+        assert!(header.contains("Song ID"));
         assert!(header.contains("Title"));
         assert!(header.contains("Type"));
         assert!(header.contains("Label"));

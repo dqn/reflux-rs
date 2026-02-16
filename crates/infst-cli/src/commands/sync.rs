@@ -13,8 +13,8 @@ use crate::cli_utils;
 
 #[derive(Serialize)]
 struct LampEntry {
-    #[serde(rename = "infinitasTitle")]
-    infinitas_title: String,
+    #[serde(rename = "songId")]
+    song_id: u32,
     difficulty: String,
     lamp: String,
     #[serde(rename = "exScore")]
@@ -88,6 +88,12 @@ pub fn run(endpoint: Option<&str>, token: Option<&str>, pid: Option<u32>) -> Res
                 continue;
             }
 
+            // Sync only level 11/12 charts.
+            let level = song_info.levels[diff_idx];
+            if level != 11 && level != 12 {
+                continue;
+            }
+
             let lamp = score_data.get_lamp(diff);
 
             // Skip NO PLAY
@@ -96,7 +102,7 @@ pub fn run(endpoint: Option<&str>, token: Option<&str>, pid: Option<u32>) -> Res
             }
 
             entries.push(LampEntry {
-                infinitas_title: song_info.title.to_string(),
+                song_id: *song_id,
                 difficulty: diff.short_name().to_string(),
                 lamp: lamp.short_name().to_string(),
                 ex_score: score_data.get_score(diff),

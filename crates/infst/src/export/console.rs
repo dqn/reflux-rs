@@ -140,7 +140,7 @@ fn format_colored_lamp(lamp: &Lamp) -> String {
         Lamp::Clear => name.cyan().to_string(),
         Lamp::HardClear => name.bold().to_string(),
         Lamp::ExHardClear => name.yellow().to_string(),
-        Lamp::FullCombo | Lamp::Pfc => name.cyan().to_string(),
+        Lamp::FullCombo => name.cyan().to_string(),
     }
 }
 

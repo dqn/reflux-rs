@@ -12,7 +12,7 @@ import { buildLampMap, groupChartsByTier } from "../lib/chart-table";
 import { validateLampInput } from "../lib/validators";
 
 interface LampInput {
-  infinitasTitle: string;
+  songId: number;
   difficulty: string;
   lamp: string;
   exScore?: number;
@@ -99,7 +99,7 @@ apiRoutes.post("/lamps", bearerAuth, async (c) => {
     .where(
       and(
         eq(lamps.userId, user.id),
-        eq(lamps.infinitasTitle, body.infinitasTitle),
+        eq(lamps.songId, body.songId),
         eq(lamps.difficulty, body.difficulty),
       ),
     )
@@ -146,7 +146,7 @@ apiRoutes.post("/lamps", bearerAuth, async (c) => {
   // Insert new lamp
   await db.insert(lamps).values({
     userId: user.id,
-    infinitasTitle: body.infinitasTitle,
+    songId: body.songId,
     difficulty: body.difficulty,
     lamp: body.lamp,
     exScore: body.exScore ?? null,
@@ -189,13 +189,13 @@ apiRoutes.post("/lamps/bulk", bearerAuth, async (c) => {
 
   const existingMap = new Map<string, typeof existingLamps[number]>();
   for (const l of existingLamps) {
-    existingMap.set(`${l.infinitasTitle}:${l.difficulty}`, l);
+    existingMap.set(`${l.songId}:${l.difficulty}`, l);
   }
 
   // Process entries and collect batch operations
   const inserts: Array<{
     userId: number;
-    infinitasTitle: string;
+    songId: number;
     difficulty: string;
     lamp: string;
     exScore: number | null;
@@ -218,7 +218,7 @@ apiRoutes.post("/lamps/bulk", bearerAuth, async (c) => {
       continue;
     }
 
-    const key = `${entry.infinitasTitle}:${entry.difficulty}`;
+    const key = `${entry.songId}:${entry.difficulty}`;
     const existingLamp = existingMap.get(key);
 
     if (existingLamp) {
@@ -241,7 +241,7 @@ apiRoutes.post("/lamps/bulk", bearerAuth, async (c) => {
     } else {
       inserts.push({
         userId: user.id,
-        infinitasTitle: entry.infinitasTitle,
+        songId: entry.songId,
         difficulty: entry.difficulty,
         lamp: entry.lamp,
         exScore: entry.exScore ?? null,
@@ -258,10 +258,10 @@ apiRoutes.post("/lamps/bulk", bearerAuth, async (c) => {
   for (const ins of inserts) {
     statements.push(
       c.env.DB.prepare(
-        "INSERT INTO lamps (user_id, infinitas_title, difficulty, lamp, ex_score, miss_count, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO lamps (user_id, song_id, difficulty, lamp, ex_score, miss_count, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       ).bind(
         ins.userId,
-        ins.infinitasTitle,
+        ins.songId,
         ins.difficulty,
         ins.lamp,
         ins.exScore,
@@ -336,7 +336,7 @@ apiRoutes.get(
 
     return c.json({
       lamps: updatedLamps.map((l) => ({
-        infinitasTitle: l.infinitasTitle,
+        songId: l.songId,
         difficulty: l.difficulty,
         lamp: l.lamp,
         exScore: l.exScore,
@@ -358,8 +358,8 @@ apiRoutes.post("/charts/sync", async (c) => {
     Record<
       string,
       Array<{
+        songId: number;
         title: string;
-        infinitasTitle?: string;
         difficulty: string;
         tier: string;
         attributes?: string;
@@ -377,14 +377,21 @@ apiRoutes.post("/charts/sync", async (c) => {
       const existing = await db
         .select()
         .from(charts)
-        .where(and(eq(charts.tableKey, tableKey), eq(charts.title, entry.title)))
+        .where(
+          and(
+            eq(charts.tableKey, tableKey),
+            eq(charts.songId, entry.songId),
+            eq(charts.difficulty, entry.difficulty),
+          ),
+        )
         .limit(1);
 
       if (existing[0]) {
         await db
           .update(charts)
           .set({
-            infinitasTitle: entry.infinitasTitle ?? null,
+            songId: entry.songId,
+            title: entry.title,
             difficulty: entry.difficulty,
             tier: entry.tier,
             attributes: entry.attributes ?? null,
@@ -394,8 +401,8 @@ apiRoutes.post("/charts/sync", async (c) => {
       } else {
         await db.insert(charts).values({
           tableKey,
+          songId: entry.songId,
           title: entry.title,
-          infinitasTitle: entry.infinitasTitle ?? null,
           difficulty: entry.difficulty,
           tier: entry.tier,
           attributes: entry.attributes ?? null,

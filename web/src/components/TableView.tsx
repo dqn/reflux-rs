@@ -55,8 +55,8 @@ export const TableView: FC<TableViewProps> = ({
           <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:6px;">
             {tier.entries.map((entry) => (
               <LampCell
+                songId={entry.songId}
                 title={entry.title}
-                infinitasTitle={entry.infinitasTitle}
                 difficulty={entry.difficulty}
                 lamp={entry.lamp}
                 attributes={entry.attributes}

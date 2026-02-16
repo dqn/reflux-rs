@@ -18,7 +18,6 @@ describe("getLampOrder", () => {
     expect(getLampOrder("HARD")).toBe(5);
     expect(getLampOrder("EX HARD")).toBe(6);
     expect(getLampOrder("FC")).toBe(7);
-    expect(getLampOrder("PFC")).toBe(8);
   });
 
   it("returns -1 for invalid lamp", () => {
@@ -31,7 +30,7 @@ describe("isHigherLamp", () => {
   it("returns true when new lamp is higher", () => {
     expect(isHigherLamp("CLEAR", "NO PLAY")).toBe(true);
     expect(isHigherLamp("HARD", "CLEAR")).toBe(true);
-    expect(isHigherLamp("PFC", "FC")).toBe(true);
+    expect(isHigherLamp("FC", "EX HARD")).toBe(true);
   });
 
   it("returns false when new lamp is equal", () => {
