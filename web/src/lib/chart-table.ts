@@ -49,6 +49,21 @@ export function buildLampMap(
   return lampMap;
 }
 
+const TIER_ORDER: string[] = [
+  "地力S+", "個人差S+",
+  "地力S", "個人差S",
+  "地力A+", "個人差A+",
+  "地力A", "個人差A",
+  "地力B+", "個人差B+",
+  "地力B", "個人差B",
+  "地力C", "個人差C",
+  "地力D", "個人差D",
+  "地力E", "個人差E",
+  "地力F", "個人差F",
+  "超個人差",
+  "未定",
+];
+
 export function groupChartsByTier(
   chartRows: ChartRow[],
   lampMap: Map<string, LampData>,
@@ -78,8 +93,13 @@ export function groupChartsByTier(
     }
   }
 
-  return Array.from(tierMap.entries()).map(([tier, entries]) => ({
-    tier,
-    entries,
-  }));
+  const unknownTierOrder = TIER_ORDER.length - 3;
+
+  return Array.from(tierMap.entries())
+    .map(([tier, entries]) => ({ tier, entries }))
+    .sort((a, b) => {
+      const ai = TIER_ORDER.indexOf(a.tier);
+      const bi = TIER_ORDER.indexOf(b.tier);
+      return (ai === -1 ? unknownTierOrder : ai) - (bi === -1 ? unknownTierOrder : bi);
+    });
 }
