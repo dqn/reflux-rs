@@ -161,7 +161,7 @@ pub enum Command {
     /// Login to the infst web service
     Login {
         /// API endpoint URL
-        #[arg(long, env = "INFST_API_ENDPOINT")]
+        #[arg(long, env = "INFST_API_ENDPOINT", default_value = "https://infst.oidehosp.me")]
         endpoint: String,
     },
     /// Upload tracker data to the web service

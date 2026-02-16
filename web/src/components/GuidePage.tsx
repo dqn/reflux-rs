@@ -89,13 +89,12 @@ export const GuidePage: FC<GuidePageProps> = ({ user }) => {
           <p style="color:#ccc;line-height:1.6;margin-bottom:12px;">
             Run the following command to authenticate your CLI:
           </p>
-          <code style={codeStyle}>
-            infst login --endpoint https://infst.oidehosp.me
-          </code>
+          <code style={codeStyle}>infst login</code>
           <p style="color:#ccc;line-height:1.6;margin-top:12px;">
             A device code will be displayed. Open the verification URL in your
             browser, log in to your infst account, and enter the code to
-            authorize the CLI.
+            authorize the CLI. You can override the endpoint with{" "}
+            <code>--endpoint &lt;URL&gt;</code>.
           </p>
         </div>
 
