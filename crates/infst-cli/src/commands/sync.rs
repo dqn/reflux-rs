@@ -2,13 +2,13 @@
 
 use anyhow::{Context, Result};
 use infst::{
-    MemoryReader, OffsetSearcher, ProcessHandle, ScoreMap, builtin_signatures, chart::Difficulty,
-    fetch_song_database, get_unlock_states, score::Lamp,
+    MemoryReader, ScoreMap, chart::Difficulty, fetch_song_database, get_unlock_states, score::Lamp,
 };
 use serde::Serialize;
 use std::time::Duration;
 
 use super::upload::resolve_credentials;
+use crate::cli_utils;
 
 #[derive(Serialize)]
 struct LampEntry {
@@ -42,12 +42,7 @@ pub fn run(endpoint: Option<&str>, token: Option<&str>, pid: Option<u32>) -> Res
     // Resolve credentials
     let (resolved_endpoint, resolved_token) = resolve_credentials(endpoint, token)?;
 
-    // Open process
-    let process = if let Some(pid) = pid {
-        ProcessHandle::open(pid)?
-    } else {
-        ProcessHandle::find_and_open()?
-    };
+    let process = cli_utils::open_process(pid)?;
 
     eprintln!(
         "Found process (PID: {}, Base: 0x{:X})",
@@ -55,11 +50,7 @@ pub fn run(endpoint: Option<&str>, token: Option<&str>, pid: Option<u32>) -> Res
     );
 
     let reader = MemoryReader::new(&process);
-
-    // Search for offsets
-    let signatures = builtin_signatures();
-    let mut searcher = OffsetSearcher::new(&reader);
-    let offsets = searcher.search_all_with_signatures(&signatures)?;
+    let offsets = cli_utils::search_offsets(&reader)?;
     eprintln!("Offsets detected");
 
     // Load song database

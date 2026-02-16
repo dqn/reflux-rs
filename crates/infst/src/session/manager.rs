@@ -24,18 +24,6 @@ impl SessionManager {
         }
     }
 
-    /// Start a new session with TSV header written
-    pub fn start_session(&mut self) -> Result<PathBuf> {
-        let now: DateTime<Local> = Local::now();
-        let session_dir = self.base_dir.join(now.format("%Y-%m-%d").to_string());
-        fs::create_dir_all(&session_dir)?;
-
-        let session_file = session_dir.join(format!("session_{}.tsv", now.format("%H%M%S")));
-        self.current_tsv_session = Some(session_file.clone());
-
-        Ok(session_file)
-    }
-
     /// Start a session with TSV header
     pub fn start_tsv_session(&mut self) -> Result<PathBuf> {
         let now: DateTime<Local> = Local::now();
@@ -93,18 +81,6 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Append a line to the TSV session (legacy method)
-    pub fn append_line(&self, line: &str) -> Result<()> {
-        if let Some(ref path) = self.current_tsv_session {
-            let mut file = fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)?;
-            writeln!(file, "{}", line)?;
-        }
-        Ok(())
-    }
-
     pub fn current_session_path(&self) -> Option<&Path> {
         self.current_tsv_session.as_deref()
     }
@@ -134,16 +110,6 @@ mod tests {
     }
 
     #[test]
-    fn test_start_session() {
-        let (mut manager, _temp) = create_temp_session_manager();
-        let path = manager.start_session().unwrap();
-
-        assert!(path.exists() || path.parent().unwrap().exists());
-        assert!(manager.current_session_path().is_some());
-        assert!(path.extension().unwrap() == "tsv");
-    }
-
-    #[test]
     fn test_start_json_session() {
         let (mut manager, _temp) = create_temp_session_manager();
         let path = manager.start_json_session().unwrap();
@@ -157,27 +123,5 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&content).unwrap();
         assert!(json.is_array());
         assert!(json.as_array().unwrap().is_empty());
-    }
-
-    #[test]
-    fn test_append_line() {
-        let (mut manager, _temp) = create_temp_session_manager();
-        manager.start_session().unwrap();
-
-        manager.append_line("test line 1").unwrap();
-        manager.append_line("test line 2").unwrap();
-
-        let path = manager.current_session_path().unwrap();
-        let content = fs::read_to_string(path).unwrap();
-        assert!(content.contains("test line 1"));
-        assert!(content.contains("test line 2"));
-    }
-
-    #[test]
-    fn test_append_line_without_session() {
-        let (manager, _temp) = create_temp_session_manager();
-        // Should not error even without active session
-        let result = manager.append_line("test");
-        assert!(result.is_ok());
     }
 }

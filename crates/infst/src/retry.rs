@@ -45,8 +45,7 @@ pub trait RetryStrategy {
             }
         }
 
-        // We know last_error is Some because we tried at least once
-        Err(last_error.unwrap())
+        Err(last_error.expect("at least one retry attempt"))
     }
 }
 
