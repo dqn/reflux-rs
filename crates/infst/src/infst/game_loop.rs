@@ -269,7 +269,7 @@ impl Infst {
         let token = api_config.token.clone();
         let title = play_data.chart.title.to_string();
         let difficulty = play_data.chart.difficulty.short_name().to_string();
-        let lamp = play_data.lamp.expand_name().to_string();
+        let lamp = play_data.lamp.short_name().to_string();
         let ex_score = play_data.ex_score;
         let miss_count = play_data.miss_count();
 
