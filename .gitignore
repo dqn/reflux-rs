@@ -2,6 +2,7 @@
 .agent/
 ralph-loop.local.md
 CLAUDE.local.md
+AGENTS.local.md
 .claude/
 bash.exe.stackdump
 offsets.txt
