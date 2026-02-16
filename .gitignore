@@ -23,3 +23,9 @@ scripts/normalize/title-mapping.json
 dump_output.json
 explore_output.txt
 tracker_log.txt
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

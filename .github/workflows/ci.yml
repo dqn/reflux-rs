@@ -23,6 +23,20 @@ jobs:
           components: clippy
       - run: cargo clippy --all-targets -- -D warnings
 
+  web-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+
   build-windows:
     runs-on: windows-latest
     steps:
