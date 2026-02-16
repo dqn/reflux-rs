@@ -13,7 +13,7 @@ import {
 } from "../middleware/session";
 import { DevicePage } from "../components/DevicePage";
 
-const RESERVED_USERNAMES = ["login", "register", "settings", "auth", "api", "admin"];
+const RESERVED_USERNAMES = ["login", "register", "settings", "auth", "api", "admin", "guide"];
 
 export const authRoutes = new Hono<{
   Bindings: Env;

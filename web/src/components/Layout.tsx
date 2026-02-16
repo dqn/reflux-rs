@@ -1,8 +1,8 @@
 import type { Child, FC } from "hono/jsx";
 
 interface LayoutProps {
-  title?: string;
-  user?: { username: string | null } | null;
+  title?: string | undefined;
+  user?: { username: string | null } | null | undefined;
   children: Child;
 }
 
@@ -90,6 +90,7 @@ export const Layout: FC<LayoutProps> = ({ title, user, children }) => {
         <nav>
           <a class="brand" href="/">infst</a>
           <div class="links">
+            <a href="/guide">Guide</a>
             {user ? (
               <>
                 {user.username ? (

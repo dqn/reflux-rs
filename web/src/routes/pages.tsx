@@ -9,6 +9,7 @@ import { Layout } from "../components/Layout";
 import { LoginPage } from "../components/LoginPage";
 import { RegisterPage } from "../components/RegisterPage";
 import { SettingsPage } from "../components/SettingsPage";
+import { GuidePage } from "../components/GuidePage";
 import { TableView } from "../components/TableView";
 
 interface SessionUser {
@@ -75,6 +76,12 @@ pageRoutes.get("/register", (c) => {
 pageRoutes.get("/settings", sessionAuth as any, async (c) => {
   const user = c.get("user") as SessionUser;
   return c.html(<SettingsPage user={user} />);
+});
+
+// GET /guide - Guide page
+pageRoutes.get("/guide", optionalSession, (c) => {
+  const user = c.get("user");
+  return c.html(<GuidePage user={user} />);
 });
 
 // GET /:username - User's table list
