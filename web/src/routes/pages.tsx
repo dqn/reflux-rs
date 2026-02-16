@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 
 import type { AppEnv, SessionUser } from "../lib/types";
 import { optionalSession, sessionAuth } from "../middleware/session";
@@ -192,7 +192,8 @@ pageRoutes.get("/:username/:tableKey", optionalSession, async (c) => {
   const chartRows = await db
     .select()
     .from(charts)
-    .where(eq(charts.tableKey, tableKey));
+    .where(eq(charts.tableKey, tableKey))
+    .orderBy(asc(charts.sortOrder));
 
   if (chartRows.length === 0) {
     return c.html(

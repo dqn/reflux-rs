@@ -5,6 +5,7 @@ interface ChartRow {
   difficulty: string;
   tier: string;
   attributes: string | null;
+  sortOrder: number | null;
 }
 
 interface LampData {

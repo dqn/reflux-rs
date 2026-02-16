@@ -37,6 +37,7 @@ interface MappedEntry {
   difficulty: Difficulty;
   tier: string;
   attributes: string[];
+  sortOrder: number;
 }
 
 interface TitleMapping {
@@ -310,6 +311,7 @@ export async function normalize(): Promise<void> {
   interface PendingEntry {
     key: EndpointKey;
     apiEntry: IidxApiEntry;
+    apiIndex: number;
     cleanTitle: string;
     difficulty: Difficulty;
     expectedRating: number;
@@ -332,7 +334,8 @@ export async function normalize(): Promise<void> {
     const entries = await fetchEndpoint(url);
     console.log(`Fetched ${entries.length} entries`);
 
-    for (const apiEntry of entries) {
+    for (let apiIndex = 0; apiIndex < entries.length; apiIndex++) {
+      const apiEntry = entries[apiIndex]!;
       const { cleanTitle, difficulty } = analyzeSuffix(apiEntry.title);
 
       // 1. Try exact match
@@ -359,6 +362,7 @@ export async function normalize(): Promise<void> {
             difficulty,
             tier: apiEntry.tier,
             attributes: apiEntry.attributes,
+            sortOrder: apiIndex,
           });
           autoMatched++;
         } else if (match.rating === 0) {
@@ -401,6 +405,7 @@ export async function normalize(): Promise<void> {
           pending.push({
             key,
             apiEntry,
+            apiIndex,
             cleanTitle,
             difficulty,
             expectedRating,
@@ -448,6 +453,7 @@ export async function normalize(): Promise<void> {
           difficulty: p.difficulty,
           tier: p.apiEntry.tier,
           attributes: p.apiEntry.attributes,
+          sortOrder: p.apiIndex,
         });
       } else {
         console.log(`\x1b[33m-\x1b[0m Skipped: ${p.apiEntry.title}`);

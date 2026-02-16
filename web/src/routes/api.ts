@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, asc } from "drizzle-orm";
 
 import type { AppEnv } from "../lib/types";
 import { isHigherLamp } from "../lib/lamp";
@@ -40,7 +40,8 @@ apiRoutes.get(
     const chartRows = await db
       .select()
       .from(charts)
-      .where(eq(charts.tableKey, tableKey));
+      .where(eq(charts.tableKey, tableKey))
+      .orderBy(asc(charts.sortOrder));
 
     if (chartRows.length === 0) {
       return c.json({ error: "Table not found" }, 404);
@@ -362,6 +363,7 @@ apiRoutes.post("/charts/sync", async (c) => {
         difficulty: string;
         tier: string;
         attributes?: string;
+        sortOrder?: number;
       }>
     >
   >();
@@ -386,6 +388,7 @@ apiRoutes.post("/charts/sync", async (c) => {
             difficulty: entry.difficulty,
             tier: entry.tier,
             attributes: entry.attributes ?? null,
+            sortOrder: entry.sortOrder ?? null,
           })
           .where(eq(charts.id, existing[0].id));
       } else {
@@ -396,6 +399,7 @@ apiRoutes.post("/charts/sync", async (c) => {
           difficulty: entry.difficulty,
           tier: entry.tier,
           attributes: entry.attributes ?? null,
+          sortOrder: entry.sortOrder ?? null,
         });
       }
       upsertCount++;

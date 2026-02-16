@@ -41,6 +41,7 @@ export const charts = sqliteTable(
     difficulty: text("difficulty").notNull(),
     tier: text("tier").notNull(),
     attributes: text("attributes"),
+    sortOrder: integer("sort_order"),
   },
   (table) => [
     uniqueIndex("charts_table_key_title_idx").on(table.tableKey, table.title),

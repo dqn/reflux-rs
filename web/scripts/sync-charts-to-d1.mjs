@@ -36,9 +36,10 @@ for (const [tableKey, entries] of Object.entries(mapping)) {
     const attributes = entry.attributes
       ? `'${escapeSql(entry.attributes)}'`
       : "NULL";
+    const sortOrder = entry.sortOrder !== undefined ? entry.sortOrder : "NULL";
 
     rows.push(
-      `('${escapeSql(tableKey)}','${escapeSql(entry.title)}',${infinitasTitle},'${escapeSql(entry.difficulty)}','${escapeSql(entry.tier)}',${attributes})`,
+      `('${escapeSql(tableKey)}','${escapeSql(entry.title)}',${infinitasTitle},'${escapeSql(entry.difficulty)}','${escapeSql(entry.tier)}',${attributes},${sortOrder})`,
     );
   }
 }
@@ -54,13 +55,14 @@ const statements = [];
 for (let i = 0; i < rows.length; i += chunkSize) {
   const chunk = rows.slice(i, i + chunkSize);
   statements.push([
-    "INSERT INTO charts (table_key, title, infinitas_title, difficulty, tier, attributes) VALUES",
+    "INSERT INTO charts (table_key, title, infinitas_title, difficulty, tier, attributes, sort_order) VALUES",
     chunk.join(",\n"),
     "ON CONFLICT(table_key, title) DO UPDATE SET",
     "  infinitas_title=excluded.infinitas_title,",
     "  difficulty=excluded.difficulty,",
     "  tier=excluded.tier,",
-    "  attributes=excluded.attributes;",
+    "  attributes=excluded.attributes,",
+    "  sort_order=excluded.sort_order;",
   ].join("\n"));
 }
 

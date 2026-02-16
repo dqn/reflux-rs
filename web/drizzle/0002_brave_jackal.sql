@@ -1,0 +1,1 @@
+ALTER TABLE `charts` ADD `sort_order` integer;
