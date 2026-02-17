@@ -26,6 +26,10 @@ pub mod retry {
 /// Faster initial polling catches quick data availability, while exponential
 /// backoff reduces CPU usage if data takes longer to populate.
 pub mod polling {
+    /// Initial delay (in ms) before polling result screen data.
+    /// Allows game to finish writing all PlayData fields (especially lamp).
+    pub const RESULT_INITIAL_DELAY_MS: u64 = 2000;
+
     /// Delay (in ms) for each polling attempt on result screen.
     pub const POLL_DELAYS_MS: [u64; 10] = [50, 50, 100, 100, 200, 200, 300, 300, 500, 500];
 }

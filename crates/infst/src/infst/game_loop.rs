@@ -176,7 +176,7 @@ impl Infst {
 
         // Initial delay to allow game data to settle (matching C# implementation)
         // This prevents race conditions where judge data updates before play data
-        thread::sleep(Duration::from_millis(1000));
+        thread::sleep(Duration::from_millis(polling::RESULT_INITIAL_DELAY_MS));
 
         // Poll until play data becomes available (exponential backoff)
         for (attempt, &delay) in polling::POLL_DELAYS_MS.iter().enumerate() {
@@ -191,18 +191,26 @@ impl Infst {
                         + play_data.judge.bad
                         + play_data.judge.poor;
 
-                    // Validate song_id matches current_playing (if available)
-                    let song_id_valid = match self.current_playing {
-                        Some((expected_id, _)) => play_data.chart.song_id == expected_id,
+                    // Validate song_id and difficulty match current_playing (if available)
+                    let chart_valid = match self.current_playing {
+                        Some((expected_id, expected_diff)) => {
+                            play_data.chart.song_id == expected_id
+                                && play_data.chart.difficulty == expected_diff
+                        }
                         None => true, // No reference, accept any
                     };
 
+                    // Lamp must be at least Failed when notes exist (NoPlay means data not yet written)
+                    let lamp_valid = play_data.lamp >= Lamp::Failed;
+
                     debug!(
-                        "Attempt {}: song_id={}, total_notes={}, song_id_valid={}, judge: P={} G={} Go={} B={} Po={}",
+                        "Attempt {}: song_id={}, total_notes={}, chart_valid={}, lamp={}, lamp_valid={}, judge: P={} G={} Go={} B={} Po={}",
                         attempt + 1,
                         play_data.chart.song_id,
                         total_notes,
-                        song_id_valid,
+                        chart_valid,
+                        play_data.lamp,
+                        lamp_valid,
                         play_data.judge.pgreat,
                         play_data.judge.great,
                         play_data.judge.good,
@@ -210,7 +218,7 @@ impl Infst {
                         play_data.judge.poor
                     );
 
-                    if total_notes > 0 && song_id_valid {
+                    if total_notes > 0 && chart_valid && lamp_valid {
                         info!(
                             "Play result captured: {} ({}) - EX: {}",
                             play_data.chart.title, play_data.chart.song_id, play_data.ex_score
@@ -222,8 +230,11 @@ impl Infst {
                     // Data not ready yet, continue polling
                     if attempt == polling::POLL_DELAYS_MS.len() - 1 {
                         debug!(
-                            "Play data notes count is zero or song_id mismatch after {} attempts",
-                            polling::POLL_DELAYS_MS.len()
+                            "Play data validation failed after {} attempts (notes={}, chart_valid={}, lamp_valid={})",
+                            polling::POLL_DELAYS_MS.len(),
+                            total_notes,
+                            chart_valid,
+                            lamp_valid,
                         );
                     }
                 }
