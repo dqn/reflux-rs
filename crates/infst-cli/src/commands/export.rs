@@ -2,8 +2,8 @@
 
 use anyhow::Result;
 use infst::{
-    MemoryReader, OffsetSearcher, ScoreMap, fetch_song_database,
-    generate_tracker_json, generate_tracker_tsv, get_unlock_states,
+    MemoryReader, OffsetSearcher, ScoreMap, fetch_song_database, generate_tracker_json,
+    generate_tracker_tsv, get_unlock_states,
 };
 
 use crate::cli::ExportFormat;
