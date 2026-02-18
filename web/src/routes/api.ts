@@ -159,7 +159,18 @@ apiRoutes.post("/lamps", bearerAuth, async (c) => {
 
 // POST /api/lamps/bulk - Bulk update lamps (Bearer auth)
 apiRoutes.post("/lamps/bulk", bearerAuth, async (c) => {
-  const rawBody = await c.req.json();
+  // Handle gzip-compressed request bodies.
+  // Cloudflare Workers may auto-decompress, but we handle it explicitly as fallback.
+  let rawBody: unknown;
+  const contentEncoding = c.req.header("Content-Encoding");
+  if (contentEncoding === "gzip") {
+    const compressed = await c.req.arrayBuffer();
+    const ds = new DecompressionStream("gzip");
+    const decompressed = new Response(new Blob([compressed]).stream().pipeThrough(ds));
+    rawBody = await decompressed.json();
+  } else {
+    rawBody = await c.req.json();
+  }
 
   // Bug-2 fix: Accept both { entries: [...] } and [...] formats
   let entries: LampInput[];

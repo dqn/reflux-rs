@@ -194,6 +194,45 @@ impl<'a, R: ReadMemory> OffsetSearcher<'a, R> {
         Ok(offsets)
     }
 
+    /// Search offsets required for sync operations (without unlock data).
+    ///
+    /// This is a lighter variant of `search_data_offsets` that skips
+    /// the unlock_data search, since sync only needs song_list and data_map.
+    pub fn search_sync_offsets(&mut self) -> Result<OffsetsCollection> {
+        debug!("Starting sync-offset detection...");
+
+        let mut offsets = OffsetsCollection {
+            version: "unknown".to_string(),
+            ..Default::default()
+        };
+
+        let base = self.reader.base_address();
+        let song_list_hint = self
+            .song_list_hint
+            .unwrap_or(base + EXPECTED_SONG_LIST_OFFSET);
+
+        offsets.song_list = self.search_song_list_offset(song_list_hint)?;
+        debug!("  SongList: 0x{:X}", offsets.song_list);
+
+        offsets.data_map = self.search_data_map_offset(base).or_else(|e| {
+            debug!(
+                "  DataMap search from base failed: {}, trying from SongList",
+                e
+            );
+            self.search_data_map_offset(offsets.song_list)
+        })?;
+        debug!("  DataMap: 0x{:X}", offsets.data_map);
+
+        if offsets.song_list == 0 || offsets.data_map == 0 {
+            return Err(Error::offset_search_failed(
+                "Validation failed: required sync offsets are zero".to_string(),
+            ));
+        }
+
+        debug!("Sync-offset detection completed successfully");
+        Ok(offsets)
+    }
+
     /// Validate all offsets in a collection (delegates to validation module)
     #[inline]
     pub fn validate_signature_offsets(&self, offsets: &OffsetsCollection) -> bool {

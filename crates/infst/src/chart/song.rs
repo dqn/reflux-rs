@@ -76,11 +76,21 @@ impl SongInfo {
         self.total_notes.get(difficulty_index).copied().unwrap_or(0)
     }
 
-    /// Read song info from memory at the given address
-    pub fn read_from_memory<R: ReadMemory>(reader: &R, address: u64) -> Result<Option<Self>> {
-        // Read entire song block
-        let buffer = reader.read_bytes(address, Self::MEMORY_SIZE)?;
-        let buf = ByteBuffer::new(&buffer);
+    /// Parse song info from a pre-loaded buffer at the given offset.
+    ///
+    /// This is the buffer-based variant of `read_from_memory` that avoids
+    /// individual ReadProcessMemory calls when the buffer has been bulk-loaded.
+    pub fn parse_from_buffer(buffer: &[u8], offset: usize) -> Result<Option<Self>> {
+        if offset + Self::MEMORY_SIZE > buffer.len() {
+            return Ok(None);
+        }
+        let entry = &buffer[offset..offset + Self::MEMORY_SIZE];
+        Self::parse_entry(entry)
+    }
+
+    /// Parse a single song entry from a MEMORY_SIZE-length slice
+    fn parse_entry(entry: &[u8]) -> Result<Option<Self>> {
+        let buf = ByteBuffer::new(entry);
 
         // Check if entry is valid (first 4 bytes should not be 0)
         if buf.read_i32_at(0).unwrap_or(0) == 0 {
@@ -101,7 +111,7 @@ impl SongInfo {
         }
 
         // Parse folder (1 byte)
-        let folder = buffer[Self::FOLDER_OFFSET] as i32;
+        let folder = entry[Self::FOLDER_OFFSET] as i32;
 
         // Parse difficulty levels (10 bytes)
         let mut levels = [0u8; 10];
@@ -138,6 +148,12 @@ impl SongInfo {
             total_notes,
             unlock_type: UnlockType::default(),
         }))
+    }
+
+    /// Read song info from memory at the given address
+    pub fn read_from_memory<R: ReadMemory>(reader: &R, address: u64) -> Result<Option<Self>> {
+        let buffer = reader.read_bytes(address, Self::MEMORY_SIZE)?;
+        Self::parse_entry(&buffer)
     }
 
     /// Read song info with fallback to metadata table for new INFINITAS versions.
@@ -340,6 +356,87 @@ pub fn build_song_id_title_map<R: ReadMemory>(
 
     info!("Built song_id->title mapping with {} entries", result.len());
     result
+}
+
+/// Fetch entire song database from memory using bulk read.
+///
+/// Reads all entries in a single ReadProcessMemory call (~5.7MB) instead of
+/// ~5000 individual calls. Falls back to `fetch_song_database` on failure.
+pub fn fetch_song_database_bulk<R: ReadMemory>(
+    reader: &R,
+    song_list_addr: u64,
+) -> Result<HashMap<u32, SongInfo>> {
+    const MAX_ENTRIES: usize = 5000;
+    let bulk_size = MAX_ENTRIES * SongInfo::MEMORY_SIZE;
+
+    // Try bulk read
+    let buffer = match reader.read_bytes(song_list_addr, bulk_size) {
+        Ok(buf) => buf,
+        Err(e) => {
+            warn!("Bulk read failed ({}), falling back to per-entry read", e);
+            return fetch_song_database(reader, song_list_addr);
+        }
+    };
+
+    // Also bulk-read metadata table for fallback song_id resolution
+    let metadata_buffer = reader
+        .read_bytes(
+            song_list_addr + SongInfo::METADATA_TABLE_OFFSET as u64,
+            bulk_size,
+        )
+        .ok();
+
+    let mut result = HashMap::new();
+    let mut consecutive_failures: u32 = 0;
+    const MAX_CONSECUTIVE_FAILURES: u32 = 10;
+
+    for entry_index in 0..MAX_ENTRIES {
+        let offset = entry_index * SongInfo::MEMORY_SIZE;
+        if offset + SongInfo::MEMORY_SIZE > buffer.len() {
+            break;
+        }
+
+        match SongInfo::parse_from_buffer(&buffer, offset) {
+            Ok(Some(song)) if !song.title.is_empty() && song.id > 0 => {
+                result.entry(song.id).or_insert(song);
+                consecutive_failures = 0;
+            }
+            Ok(Some(mut song)) if song.id == 0 && !song.title.is_empty() => {
+                // Try metadata table fallback
+                if let Some(ref meta_buf) = metadata_buffer {
+                    let meta_offset = entry_index * SongInfo::MEMORY_SIZE;
+                    if meta_offset + 8 <= meta_buf.len() {
+                        let meta = ByteBuffer::new(&meta_buf[meta_offset..]);
+                        let alt_song_id = meta.read_i32_at(0).unwrap_or(0);
+                        let alt_folder = meta.read_i32_at(4).unwrap_or(0);
+                        if (1000..=50000).contains(&alt_song_id) {
+                            song.id = alt_song_id as u32;
+                            if (1..=50).contains(&alt_folder) {
+                                song.folder = alt_folder;
+                            }
+                            result.entry(song.id).or_insert(song);
+                            consecutive_failures = 0;
+                            continue;
+                        }
+                    }
+                }
+                consecutive_failures += 1;
+            }
+            _ => {
+                consecutive_failures += 1;
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
+                    debug!(
+                        "Stopping bulk song fetch after {} consecutive failures at entry {}",
+                        consecutive_failures, entry_index
+                    );
+                    break;
+                }
+            }
+        }
+    }
+
+    info!("Fetched {} songs from bulk read", result.len());
+    Ok(result)
 }
 
 /// Fetch entire song database from memory
@@ -731,4 +828,126 @@ pub fn fetch_song_database_from_memory_scan<R: ReadMemory>(
 
     info!("Fetched {} songs from memory scan", result.len());
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::process::MockMemoryBuilder;
+
+    /// Build a mock song entry buffer with a title and song_id
+    fn build_song_entry(title: &str, song_id: u32) -> Vec<u8> {
+        let mut entry = vec![0u8; SongInfo::MEMORY_SIZE];
+        // Write title as Shift-JIS at offset 0
+        let (encoded, _, _) = encoding_rs::SHIFT_JIS.encode(title);
+        let title_bytes = encoded.as_ref();
+        let len = title_bytes.len().min(SongInfo::SLAB);
+        entry[..len].copy_from_slice(&title_bytes[..len]);
+        // Write song_id at SONG_ID_OFFSET
+        entry[SongInfo::SONG_ID_OFFSET..SongInfo::SONG_ID_OFFSET + 4]
+            .copy_from_slice(&(song_id as i32).to_le_bytes());
+        // Write at least one non-zero level and note count for the entry to be meaningful
+        entry[SongInfo::LEVELS_OFFSET] = 12; // SPB level = 12
+        entry[SongInfo::NOTES_OFFSET..SongInfo::NOTES_OFFSET + 4]
+            .copy_from_slice(&100u32.to_le_bytes()); // SPB notes = 100
+        entry
+    }
+
+    #[test]
+    fn test_parse_from_buffer_valid_entry() {
+        let entry = build_song_entry("TestSong", 1001);
+        let result = SongInfo::parse_from_buffer(&entry, 0).unwrap();
+        assert!(result.is_some());
+        let song = result.unwrap();
+        assert_eq!(song.id, 1001);
+        assert!(song.title.contains("TestSong"));
+    }
+
+    #[test]
+    fn test_parse_from_buffer_empty_entry() {
+        let entry = vec![0u8; SongInfo::MEMORY_SIZE];
+        let result = SongInfo::parse_from_buffer(&entry, 0).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_from_buffer_out_of_bounds() {
+        let entry = vec![0u8; 100]; // Too small
+        let result = SongInfo::parse_from_buffer(&entry, 0).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_from_buffer_matches_read_from_memory() {
+        let entry = build_song_entry("Consistency", 2000);
+        let base: u64 = 0x1000;
+        let reader = MockMemoryBuilder::new()
+            .base(base)
+            .write_bytes(0, &entry)
+            .build();
+
+        let from_memory = SongInfo::read_from_memory(&reader, base).unwrap();
+        let from_buffer = SongInfo::parse_from_buffer(&entry, 0).unwrap();
+
+        assert!(from_memory.is_some());
+        assert!(from_buffer.is_some());
+        let mem_song = from_memory.unwrap();
+        let buf_song = from_buffer.unwrap();
+        assert_eq!(mem_song.id, buf_song.id);
+        assert_eq!(mem_song.title.as_ref(), buf_song.title.as_ref());
+        assert_eq!(mem_song.levels, buf_song.levels);
+        assert_eq!(mem_song.total_notes, buf_song.total_notes);
+    }
+
+    #[test]
+    fn test_fetch_song_database_bulk_basic() {
+        // Build buffer with 3 songs + 10 empty entries (consecutive failures trigger stop)
+        let mut buffer = Vec::new();
+        buffer.extend_from_slice(&build_song_entry("Song1", 1001));
+        buffer.extend_from_slice(&build_song_entry("Song2", 1002));
+        buffer.extend_from_slice(&build_song_entry("Song3", 1003));
+        // Add enough empty entries to trigger MAX_CONSECUTIVE_FAILURES
+        for _ in 0..10 {
+            buffer.extend_from_slice(&vec![0u8; SongInfo::MEMORY_SIZE]);
+        }
+
+        let base: u64 = 0x1000;
+        let reader = MockMemoryBuilder::new()
+            .base(base)
+            .write_bytes(0, &buffer)
+            .build();
+
+        let db = fetch_song_database_bulk(&reader, base).unwrap();
+        assert_eq!(db.len(), 3);
+        assert!(db.contains_key(&1001));
+        assert!(db.contains_key(&1002));
+        assert!(db.contains_key(&1003));
+    }
+
+    #[test]
+    fn test_fetch_song_database_bulk_matches_per_entry() {
+        // Build buffer with 2 songs
+        let mut buffer = Vec::new();
+        buffer.extend_from_slice(&build_song_entry("Alpha", 5000));
+        buffer.extend_from_slice(&build_song_entry("Beta", 5001));
+        for _ in 0..10 {
+            buffer.extend_from_slice(&vec![0u8; SongInfo::MEMORY_SIZE]);
+        }
+
+        let base: u64 = 0x1000;
+        let reader = MockMemoryBuilder::new()
+            .base(base)
+            .write_bytes(0, &buffer)
+            .build();
+
+        let bulk_db = fetch_song_database_bulk(&reader, base).unwrap();
+        let per_entry_db = fetch_song_database(&reader, base).unwrap();
+
+        assert_eq!(bulk_db.len(), per_entry_db.len());
+        for (id, bulk_song) in &bulk_db {
+            let per_song = per_entry_db.get(id).expect("missing in per-entry db");
+            assert_eq!(bulk_song.id, per_song.id);
+            assert_eq!(bulk_song.title.as_ref(), per_song.title.as_ref());
+        }
+    }
 }

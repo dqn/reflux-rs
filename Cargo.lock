@@ -578,6 +578,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "encoding_rs",
+ "flate2",
  "infst",
  "open",
  "serde",

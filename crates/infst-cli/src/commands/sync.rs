@@ -1,17 +1,23 @@
 //! Sync command for reading game memory and uploading directly to the web service.
 
-use anyhow::{Context, Result};
-use infst::{
-    MemoryReader, OffsetSearcher, ScoreMap, chart::Difficulty, fetch_song_database,
-    get_unlock_states, score::Lamp,
-};
-use serde::Serialize;
+use std::collections::HashMap;
+use std::io::Write;
 use std::time::Duration;
+use std::{fs, path::Path};
+
+use anyhow::{Context, Result};
+use flate2::Compression;
+use flate2::write::GzEncoder;
+use infst::{
+    MemoryReader, OffsetSearcher, ScoreMap, chart::Difficulty, fetch_song_database_bulk,
+    score::Lamp,
+};
+use serde::{Deserialize, Serialize};
 
 use super::upload::resolve_credentials;
 use crate::cli_utils;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct LampEntry {
     #[serde(rename = "songId")]
     song_id: u32,
@@ -36,6 +42,41 @@ const ALL_DIFFICULTIES: [Difficulty; 10] = [
     Difficulty::DpL,
 ];
 
+// --- Sync cache for differential sync ---
+
+const SYNC_CACHE_FILE: &str = ".infst-sync-cache.json";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct CachedEntry {
+    lamp: String,
+    ex_score: u32,
+    miss_count: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SyncCache {
+    entries: HashMap<String, CachedEntry>,
+}
+
+impl SyncCache {
+    fn load() -> Option<Self> {
+        let path = Path::new(SYNC_CACHE_FILE);
+        let content = fs::read_to_string(path).ok()?;
+        serde_json::from_str(&content).ok()
+    }
+
+    fn save(&self) {
+        let Ok(content) = serde_json::to_string(self) else {
+            return;
+        };
+        let _ = fs::write(SYNC_CACHE_FILE, content);
+    }
+
+    fn make_key(song_id: u32, difficulty: &str) -> String {
+        format!("{}:{}", song_id, difficulty)
+    }
+}
+
 pub fn run(endpoint: Option<&str>, token: Option<&str>, pid: Option<u32>) -> Result<()> {
     let current_version = env!("CARGO_PKG_VERSION");
     eprintln!("infst {} - Sync Mode", current_version);
@@ -51,20 +92,15 @@ pub fn run(endpoint: Option<&str>, token: Option<&str>, pid: Option<u32>) -> Res
     );
 
     let reader = MemoryReader::new(&process);
-    // Search only required offsets (song list/data map/unlock data)
+    // Search only required offsets (song list/data map)
     let mut searcher = OffsetSearcher::new(&reader);
-    let offsets = searcher.search_data_offsets()?;
+    let offsets = searcher.search_sync_offsets()?;
     eprintln!("Offsets detected");
 
-    // Load song database
+    // Load song database (bulk read for fewer syscalls)
     eprintln!("Loading song database...");
-    let song_db = fetch_song_database(&reader, offsets.song_list)?;
+    let song_db = fetch_song_database_bulk(&reader, offsets.song_list)?;
     eprintln!("Loaded {} songs", song_db.len());
-
-    // Load unlock data (needed for title resolution)
-    eprintln!("Loading unlock data...");
-    let unlock_db = get_unlock_states(&reader, offsets.unlock_data, &song_db)?;
-    eprintln!("Loaded {} unlock entries", unlock_db.len());
 
     // Load score map
     eprintln!("Loading score data...");
@@ -116,24 +152,89 @@ pub fn run(endpoint: Option<&str>, token: Option<&str>, pid: Option<u32>) -> Res
         return Ok(());
     }
 
-    eprintln!("Uploading {} entries...", entries.len());
+    // Differential sync: filter to changed entries only
+    let cache = SyncCache::load();
+    let entries_to_send: Vec<LampEntry> = if let Some(ref cache) = cache {
+        entries
+            .iter()
+            .filter(|e| {
+                let key = SyncCache::make_key(e.song_id, &e.difficulty);
+                match cache.entries.get(&key) {
+                    Some(cached) => {
+                        cached.lamp != e.lamp
+                            || cached.ex_score != e.ex_score
+                            || cached.miss_count != e.miss_count
+                    }
+                    None => true, // New entry
+                }
+            })
+            .cloned()
+            .collect()
+    } else {
+        entries.clone()
+    };
 
-    // POST /api/lamps/bulk
+    if entries_to_send.is_empty() {
+        println!("No changes detected since last sync.");
+        return Ok(());
+    }
+
+    eprintln!(
+        "Uploading {} entries ({} total, {} changed)...",
+        entries_to_send.len(),
+        entries.len(),
+        entries_to_send.len()
+    );
+
+    // POST /api/lamps/bulk with gzip compression
     let url = format!("{}/api/lamps/bulk", resolved_endpoint.trim_end_matches('/'));
     let config = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(30)))
         .build();
     let agent: ureq::Agent = config.into();
 
-    let body = serde_json::json!({ "entries": entries });
+    let body = serde_json::json!({ "entries": entries_to_send });
+    let json_bytes = serde_json::to_vec(&body).context("Failed to serialize JSON")?;
+
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder
+        .write_all(&json_bytes)
+        .context("Failed to compress data")?;
+    let compressed = encoder.finish().context("Failed to finish compression")?;
+
+    eprintln!(
+        "Payload: {} bytes -> {} bytes (gzip)",
+        json_bytes.len(),
+        compressed.len()
+    );
+
     let response = agent
         .post(&url)
         .header("Authorization", &format!("Bearer {}", resolved_token))
-        .send_json(&body)
+        .header("Content-Type", "application/json")
+        .header("Content-Encoding", "gzip")
+        .send(compressed.as_slice())
         .context("Failed to upload data")?;
 
     println!("Sync complete (status: {})", response.status());
-    println!("Synced {} entries.", entries.len());
+    println!("Synced {} entries.", entries_to_send.len());
+
+    // Update cache with all current entries
+    let mut new_cache = SyncCache {
+        entries: HashMap::new(),
+    };
+    for e in &entries {
+        let key = SyncCache::make_key(e.song_id, &e.difficulty);
+        new_cache.entries.insert(
+            key,
+            CachedEntry {
+                lamp: e.lamp.clone(),
+                ex_score: e.ex_score,
+                miss_count: e.miss_count,
+            },
+        );
+    }
+    new_cache.save();
 
     Ok(())
 }

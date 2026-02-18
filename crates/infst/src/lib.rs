@@ -31,7 +31,7 @@ pub mod session;
 // Re-export from chart module
 pub use chart::{
     Chart, ChartInfo, Difficulty, SongInfo, UnlockData, fetch_song_database,
-    get_unlock_state_for_difficulty, get_unlock_states,
+    fetch_song_database_bulk, get_unlock_state_for_difficulty, get_unlock_states,
 };
 
 // Re-export from config module
