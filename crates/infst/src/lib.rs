@@ -20,6 +20,7 @@ pub mod debug;
 pub mod error;
 pub mod export;
 pub mod infst;
+pub mod input;
 pub mod offset;
 pub mod play;
 pub mod prelude;
@@ -74,6 +75,9 @@ pub use export::{
     ExportFormat, JsonExporter, TsvExporter, TsvRowData, export_song_list, export_tracker_json,
     export_tracker_tsv, format_tracker_tsv_header, generate_tracker_json, generate_tracker_tsv,
 };
+
+// Re-export from input module
+pub use input::{GameKey, NavigationResult, SongNavigator, send_key_press};
 
 // Re-export from session module
 pub use session::SessionManager;

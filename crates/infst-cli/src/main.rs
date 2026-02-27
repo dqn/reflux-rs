@@ -82,6 +82,13 @@ fn main() -> Result<()> {
             token,
             pid,
         }) => commands::sync::run(endpoint.as_deref(), token.as_deref(), pid),
+        Some(Command::Navigate {
+            target,
+            difficulty,
+            max_steps,
+            key_delay,
+            pid,
+        }) => commands::navigate::run(&target, difficulty.as_deref(), max_steps, key_delay, pid),
         Some(Command::Upload {
             tracker,
             mapping,

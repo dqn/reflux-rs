@@ -180,6 +180,23 @@ pub enum Command {
         #[arg(long)]
         pid: Option<u32>,
     },
+    /// Navigate to a song on the select screen
+    Navigate {
+        /// Target song (fuzzy search query)
+        target: String,
+        /// Difficulty (SPN, SPH, SPA, etc.)
+        #[arg(long, short)]
+        difficulty: Option<String>,
+        /// Maximum navigation steps
+        #[arg(long, default_value = "3000")]
+        max_steps: u32,
+        /// Key press delay in ms
+        #[arg(long, default_value = "80")]
+        key_delay: u64,
+        /// Process ID (skip automatic detection)
+        #[arg(long)]
+        pid: Option<u32>,
+    },
     /// Upload tracker data to the web service
     Upload {
         /// Tracker TSV file path
