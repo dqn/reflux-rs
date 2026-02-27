@@ -82,6 +82,9 @@ fn main() -> Result<()> {
             token,
             pid,
         }) => commands::sync::run(endpoint.as_deref(), token.as_deref(), pid),
+        Some(Command::Launch { url, pid, timeout }) => {
+            commands::launch::run(url.as_deref(), pid, timeout)
+        }
         Some(Command::Navigate {
             target,
             difficulty,

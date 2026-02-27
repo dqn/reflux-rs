@@ -1,7 +1,7 @@
-//! Game window focus management.
+//! Game window management.
 //!
-//! Locates the INFINITAS window by process ID and manages foreground focus,
-//! which is required for `SendInput` to deliver keystrokes to the correct window.
+//! Locates the INFINITAS window by process ID, manages foreground focus,
+//! and provides borderless window mode transformation.
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::HWND;
@@ -82,6 +82,75 @@ pub fn is_foreground(hwnd: HWND) -> bool {
     fg == hwnd
 }
 
+/// Apply borderless window mode: remove decorations and resize to fill the monitor.
+///
+/// Removes `WS_CAPTION` and `WS_THICKFRAME` styles, adds `WS_POPUP`, then
+/// repositions the window to cover the entire monitor work area.
+/// Skips modification if the window is already borderless.
+#[cfg(target_os = "windows")]
+pub fn apply_borderless(hwnd: HWND) -> anyhow::Result<()> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_STYLE, GetWindowLongPtrW, SWP_FRAMECHANGED, SWP_NOZORDER, SetWindowLongPtrW,
+        SetWindowPos, WINDOW_STYLE, WS_CAPTION, WS_POPUP, WS_THICKFRAME,
+    };
+
+    // SAFETY: GetWindowLongPtrW with GWL_STYLE reads the window style bits.
+    let style = WINDOW_STYLE(unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32);
+
+    // Skip if already borderless (no caption and no thick frame)
+    if !style.contains(WS_CAPTION) && !style.contains(WS_THICKFRAME) {
+        return Ok(());
+    }
+
+    let new_style = (style & !WS_CAPTION & !WS_THICKFRAME) | WS_POPUP;
+
+    // SAFETY: SetWindowLongPtrW with GWL_STYLE updates window style bits.
+    unsafe {
+        SetWindowLongPtrW(hwnd, GWL_STYLE, new_style.0 as isize);
+    }
+
+    let rect = get_monitor_rect(hwnd)?;
+
+    // SAFETY: SetWindowPos repositions and resizes the window to fill the monitor.
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            None,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            SWP_NOZORDER | SWP_FRAMECHANGED,
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Get the monitor rectangle for the monitor containing the given window.
+#[cfg(target_os = "windows")]
+fn get_monitor_rect(hwnd: HWND) -> anyhow::Result<windows::Win32::Foundation::RECT> {
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    };
+
+    // SAFETY: MonitorFromWindow returns the monitor handle for the window.
+    let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+
+    // SAFETY: GetMonitorInfoW fills the MONITORINFO struct for a valid monitor handle.
+    let ok = unsafe { GetMonitorInfoW(monitor, &mut info) };
+    if !ok.as_bool() {
+        anyhow::bail!("GetMonitorInfoW failed");
+    }
+
+    Ok(info.rcMonitor)
+}
+
 // --- Non-Windows stubs ---
 
 #[cfg(not(target_os = "windows"))]
@@ -97,4 +166,9 @@ pub fn ensure_foreground(_hwnd: ()) -> anyhow::Result<()> {
 #[cfg(not(target_os = "windows"))]
 pub fn is_foreground(_hwnd: ()) -> bool {
     false
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn apply_borderless(_hwnd: ()) -> anyhow::Result<()> {
+    anyhow::bail!("Window management is only supported on Windows")
 }
