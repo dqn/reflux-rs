@@ -29,7 +29,7 @@ pub fn run_with_uri(uri: &str, api_endpoint: Option<&str>, api_token: Option<&st
     let pid = infst::launcher::launch_game(&token)?;
     println!("Game launched (PID: {})", pid);
 
-    run(None, api_endpoint, api_token)
+    run_inner(None, api_endpoint, api_token, true)
 }
 
 /// Run the main tracking mode
@@ -37,6 +37,21 @@ pub fn run(
     offsets_file: Option<&str>,
     api_endpoint: Option<&str>,
     api_token: Option<&str>,
+) -> Result<()> {
+    run_inner(offsets_file, api_endpoint, api_token, false)
+}
+
+/// Inner tracking loop.
+///
+/// When `borderless` is true (URI-launched with `-w` flag), applies borderless
+/// window mode after connecting. When false (default tracking mode attaching to
+/// an already-running game), borderless is skipped because the game may be in
+/// exclusive fullscreen where `SetWindowLongPtr` is silently ignored.
+fn run_inner(
+    offsets_file: Option<&str>,
+    api_endpoint: Option<&str>,
+    api_token: Option<&str>,
+    borderless: bool,
 ) -> Result<()> {
     let shutdown = setup_shutdown_handler();
     let (initial_offsets, offsets_from_file) = load_initial_offsets(offsets_file);
@@ -53,7 +68,9 @@ pub fn run(
 
     while !shutdown.is_shutdown() {
         if let Some(process) = wait_for_process(&shutdown) {
-            apply_borderless_if_possible(&process);
+            if borderless {
+                apply_borderless_if_possible(&process);
+            }
             if let Err(e) = run_tracking_session(&mut infst, &process, &shutdown, offsets_from_file)
             {
                 error!("Tracking session error: {}", e);
@@ -353,6 +370,8 @@ fn apply_borderless_if_possible(process: &ProcessHandle) {
 fn try_apply_borderless(process: &ProcessHandle) -> anyhow::Result<()> {
     let start = Instant::now();
 
+    // Wait for a visible, non-minimised window.  The game may create its
+    // window in WS_MINIMIZE state and restore it later during init.
     let hwnd = loop {
         if start.elapsed() > WINDOW_POLL_TIMEOUT {
             anyhow::bail!("Timed out waiting for game window");
@@ -362,7 +381,9 @@ fn try_apply_borderless(process: &ProcessHandle) -> anyhow::Result<()> {
             anyhow::bail!("Game process exited before a window appeared");
         }
 
-        if let Ok(hwnd) = window::find_window_by_pid(process.pid) {
+        if let Ok(hwnd) = window::find_window_by_pid(process.pid)
+            && !window::is_minimized(hwnd)
+        {
             break hwnd;
         }
 

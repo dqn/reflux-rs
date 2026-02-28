@@ -82,34 +82,38 @@ pub fn is_foreground(hwnd: HWND) -> bool {
     fg == hwnd
 }
 
+/// Check whether the given window is minimised (iconic).
+#[cfg(target_os = "windows")]
+pub fn is_minimized(hwnd: HWND) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::IsIconic;
+
+    // SAFETY: IsIconic is safe to call with any HWND.
+    unsafe { IsIconic(hwnd).as_bool() }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn is_minimized(_hwnd: ()) -> bool {
+    false
+}
+
 /// Apply borderless window mode: strip all decorations and resize to fill the monitor.
 ///
-/// Sets the window style to `WS_VISIBLE` only (removing all decoration flags),
+/// Clears both normal (GWL_STYLE) and extended (GWL_EXSTYLE) window styles,
 /// then repositions the window to cover the entire monitor.
 /// Uses `SWP_NOSENDCHANGING` to bypass the game's `WM_WINDOWPOSCHANGING` handler
 /// which restricts window resizing.
-/// Skips modification if the window is already borderless.
 #[cfg(target_os = "windows")]
 pub fn apply_borderless(hwnd: HWND) -> anyhow::Result<()> {
     use windows::Win32::UI::WindowsAndMessaging::{
-        GWL_STYLE, GetWindowLongPtrW, SWP_FRAMECHANGED, SWP_NOSENDCHANGING, SWP_NOZORDER,
-        SetWindowLongPtrW, SetWindowPos, WINDOW_STYLE, WS_VISIBLE,
+        GWL_EXSTYLE, GWL_STYLE, SWP_FRAMECHANGED, SWP_NOSENDCHANGING, SWP_NOZORDER,
+        SetWindowLongPtrW, SetWindowPos, WS_VISIBLE,
     };
 
-    // SAFETY: GetWindowLongPtrW with GWL_STYLE reads the window style bits.
-    let style = WINDOW_STYLE(unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32);
-
-    // Skip if already borderless (only WS_VISIBLE remains)
-    if style == WS_VISIBLE {
-        return Ok(());
-    }
-
-    // Strip all decorations, keep only WS_VISIBLE (matches infzoom approach)
-    let new_style = WS_VISIBLE;
-
-    // SAFETY: SetWindowLongPtrW with GWL_STYLE updates window style bits.
+    // Strip all decorations from both normal and extended styles
+    // SAFETY: SetWindowLongPtrW with GWL_STYLE/GWL_EXSTYLE updates window style bits.
     unsafe {
-        SetWindowLongPtrW(hwnd, GWL_STYLE, new_style.0 as isize);
+        SetWindowLongPtrW(hwnd, GWL_STYLE, WS_VISIBLE.0 as isize);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, 0);
     }
 
     let rect = get_monitor_rect(hwnd)?;
