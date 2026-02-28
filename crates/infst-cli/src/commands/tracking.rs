@@ -46,6 +46,11 @@ pub fn run(
 
     println!("Waiting for INFINITAS... (Press Esc or q to quit)");
 
+    // Open the game login page if the game is not already running
+    if ProcessHandle::find_and_open().is_err() {
+        open_login_page();
+    }
+
     while !shutdown.is_shutdown() {
         if let Some(process) = wait_for_process(&shutdown) {
             apply_borderless_if_possible(&process);
@@ -389,5 +394,15 @@ fn load_score_map(
             warn!("Failed to load score map: {}", e);
             ScoreMap::new()
         }
+    }
+}
+
+const LOGIN_URL: &str = "https://p.eagate.573.jp/game/infinitas/2/api/login/login.html";
+
+/// Open the INFINITAS login page in the default browser (best-effort).
+fn open_login_page() {
+    match open::that(LOGIN_URL) {
+        Ok(()) => println!("Opened login page in browser"),
+        Err(e) => warn!("Could not open browser: {}", e),
     }
 }
