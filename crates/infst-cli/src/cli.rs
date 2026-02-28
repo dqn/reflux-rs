@@ -180,6 +180,18 @@ pub enum Command {
         #[arg(long)]
         pid: Option<u32>,
     },
+    /// Launch INFINITAS in borderless window mode
+    Launch {
+        /// bm2dxinf:// URI to launch the game
+        #[arg(long)]
+        url: Option<String>,
+        /// Process ID (skip automatic detection)
+        #[arg(long)]
+        pid: Option<u32>,
+        /// Timeout in seconds for process detection
+        #[arg(long, default_value = "120")]
+        timeout: u64,
+    },
     /// Register bm2dxinf:// URI scheme handler
     Register,
     /// Upload tracker data to the web service

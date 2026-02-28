@@ -56,6 +56,14 @@ enum Command {
         #[arg(long)]
         pid: Option<u32>,
     },
+    Launch {
+        #[arg(long)]
+        url: Option<String>,
+        #[arg(long)]
+        pid: Option<u32>,
+        #[arg(long, default_value = "120")]
+        timeout: u64,
+    },
     Register,
 }
 
@@ -203,6 +211,34 @@ fn test_missing_required_arg_fails() {
     // hexdump requires --address
     let result = Args::try_parse_from(["infst", "hexdump"]);
     assert!(result.is_err());
+}
+
+#[test]
+fn test_parse_launch() {
+    let args = Args::try_parse_from(["infst", "launch"]).unwrap();
+    match args.command {
+        Some(Command::Launch {
+            url,
+            pid,
+            timeout,
+        }) => {
+            assert!(url.is_none());
+            assert!(pid.is_none());
+            assert_eq!(timeout, 120);
+        }
+        _ => panic!("Expected Launch command"),
+    }
+}
+
+#[test]
+fn test_parse_launch_with_url() {
+    let args = Args::try_parse_from(["infst", "launch", "--url", "bm2dxinf://test"]).unwrap();
+    match args.command {
+        Some(Command::Launch { url, .. }) => {
+            assert_eq!(url, Some("bm2dxinf://test".to_string()));
+        }
+        _ => panic!("Expected Launch command"),
+    }
 }
 
 #[test]

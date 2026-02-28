@@ -2,11 +2,10 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::Result;
 use infst::config::find_game_version;
-use infst::input::window;
 use infst::{
     ApiConfig, Infst, InfstConfig, MemoryReader, OffsetSearcher, OffsetsCollection, ProcessHandle,
     ScoreMap, SongInfo, load_offsets, save_offsets_to_cache, try_load_cached_offsets,
@@ -29,7 +28,7 @@ pub fn run_with_uri(uri: &str, api_endpoint: Option<&str>, api_token: Option<&st
     let pid = infst::launcher::launch_game(&token)?;
     println!("Game launched (PID: {})", pid);
 
-    run_inner(None, api_endpoint, api_token, true)
+    run(None, api_endpoint, api_token)
 }
 
 /// Run the main tracking mode
@@ -37,21 +36,6 @@ pub fn run(
     offsets_file: Option<&str>,
     api_endpoint: Option<&str>,
     api_token: Option<&str>,
-) -> Result<()> {
-    run_inner(offsets_file, api_endpoint, api_token, false)
-}
-
-/// Inner tracking loop.
-///
-/// When `borderless` is true (URI-launched with `-w` flag), applies borderless
-/// window mode after connecting. When false (default tracking mode attaching to
-/// an already-running game), borderless is skipped because the game may be in
-/// exclusive fullscreen where `SetWindowLongPtr` is silently ignored.
-fn run_inner(
-    offsets_file: Option<&str>,
-    api_endpoint: Option<&str>,
-    api_token: Option<&str>,
-    borderless: bool,
 ) -> Result<()> {
     let shutdown = setup_shutdown_handler();
     let (initial_offsets, offsets_from_file) = load_initial_offsets(offsets_file);
@@ -68,9 +52,6 @@ fn run_inner(
 
     while !shutdown.is_shutdown() {
         if let Some(process) = wait_for_process(&shutdown) {
-            if borderless {
-                apply_borderless_if_possible(&process);
-            }
             if let Err(e) = run_tracking_session(&mut infst, &process, &shutdown, offsets_from_file)
             {
                 error!("Tracking session error: {}", e);
@@ -353,50 +334,6 @@ fn detect_game_version(reader: &MemoryReader, base_address: u64) -> Option<Strin
             None
         }
     }
-}
-
-const WINDOW_POLL_INTERVAL: Duration = Duration::from_millis(500);
-const WINDOW_POLL_TIMEOUT: Duration = Duration::from_secs(60);
-
-/// Apply borderless window mode (best-effort, failures are logged and ignored).
-fn apply_borderless_if_possible(process: &ProcessHandle) {
-    match try_apply_borderless(process) {
-        Ok(()) => println!("Borderless window mode applied"),
-        Err(e) => warn!("Could not apply borderless mode: {}", e),
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn try_apply_borderless(process: &ProcessHandle) -> anyhow::Result<()> {
-    let start = Instant::now();
-
-    // Wait for a visible, non-minimised window.  The game may create its
-    // window in WS_MINIMIZE state and restore it later during init.
-    let hwnd = loop {
-        if start.elapsed() > WINDOW_POLL_TIMEOUT {
-            anyhow::bail!("Timed out waiting for game window");
-        }
-
-        if !process.is_alive() {
-            anyhow::bail!("Game process exited before a window appeared");
-        }
-
-        if let Ok(hwnd) = window::find_window_by_pid(process.pid)
-            && !window::is_minimized(hwnd)
-        {
-            break hwnd;
-        }
-
-        std::thread::sleep(WINDOW_POLL_INTERVAL);
-    };
-
-    window::apply_borderless(hwnd)
-}
-
-#[cfg(not(target_os = "windows"))]
-fn try_apply_borderless(_process: &ProcessHandle) -> anyhow::Result<()> {
-    debug!("Borderless window mode is only supported on Windows");
-    Ok(())
 }
 
 /// Load score map from game memory
