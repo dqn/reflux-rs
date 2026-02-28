@@ -58,6 +58,8 @@ pub fn run(
             {
                 error!("Tracking session error: {}", e);
             }
+            // Restore display settings after the game disconnects
+            window::restore_display_settings();
             println!("Waiting for INFINITAS...");
         }
 
