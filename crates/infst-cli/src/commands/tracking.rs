@@ -351,11 +351,23 @@ fn apply_borderless_if_possible(process: &ProcessHandle) {
     }
 }
 
+/// Stabilisation period after the window first appears.
+///
+/// The game may change the display mode (and recreate its window) during
+/// DirectX initialisation.  We wait this long before applying borderless
+/// so that the final window is targeted at the settled resolution.
+const BORDERLESS_SETTLE_DELAY: Duration = Duration::from_secs(3);
+
+/// After applying borderless, re-check this many times (1 s apart) to
+/// make sure the game didn't override our style change.
+const BORDERLESS_RECHECK_COUNT: u32 = 5;
+
 #[cfg(target_os = "windows")]
 fn try_apply_borderless(process: &ProcessHandle) -> anyhow::Result<()> {
     let start = Instant::now();
 
-    let hwnd = loop {
+    // 1. Wait for the initial game window to appear
+    loop {
         if start.elapsed() > WINDOW_POLL_TIMEOUT {
             anyhow::bail!("Timed out waiting for game window");
         }
@@ -364,14 +376,41 @@ fn try_apply_borderless(process: &ProcessHandle) -> anyhow::Result<()> {
             anyhow::bail!("Game process exited before a window appeared");
         }
 
-        if let Ok(hwnd) = window::find_window_by_pid(process.pid) {
-            break hwnd;
+        if window::find_window_by_pid(process.pid).is_ok() {
+            break;
         }
 
         std::thread::sleep(WINDOW_POLL_INTERVAL);
-    };
+    }
 
-    window::apply_borderless(hwnd)
+    // 2. Let the game finish display initialisation (resolution change etc.)
+    std::thread::sleep(BORDERLESS_SETTLE_DELAY);
+
+    if !process.is_alive() {
+        anyhow::bail!("Game process exited during initialisation");
+    }
+
+    // 3. Re-find the window (it may have been recreated after a mode switch)
+    //    and apply borderless.
+    let hwnd = window::find_window_by_pid(process.pid)?;
+    window::apply_borderless(hwnd)?;
+
+    // 4. Re-check: if the game overrides our style, reapply.
+    for _ in 0..BORDERLESS_RECHECK_COUNT {
+        std::thread::sleep(Duration::from_secs(1));
+
+        if !process.is_alive() {
+            break;
+        }
+
+        // Re-find in case the window handle changed
+        if let Ok(h) = window::find_window_by_pid(process.pid) {
+            // apply_borderless is a no-op when WS_VISIBLE is already set
+            window::apply_borderless(h)?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(not(target_os = "windows"))]
