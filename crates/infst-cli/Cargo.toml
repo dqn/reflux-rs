@@ -23,4 +23,3 @@ open = "5"
 dirs = "6"
 ureq = { version = "3", features = ["json"] }
 flate2 = "1"
-fuzzy-matcher = "0.3"

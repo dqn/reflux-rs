@@ -77,9 +77,6 @@ pub use export::{
     export_tracker_tsv, format_tracker_tsv_header, generate_tracker_json, generate_tracker_tsv,
 };
 
-// Re-export from input module
-pub use input::{GameKey, NavigationResult, SongNavigator, send_key_press};
-
 // Re-export from session module
 pub use session::SessionManager;
 

@@ -85,21 +85,6 @@ fn main() -> Result<()> {
         Some(Command::Launch { url, pid, timeout }) => {
             commands::launch::run(url.as_deref(), pid, timeout)
         }
-        Some(Command::Navigate {
-            target,
-            difficulty,
-            max_steps,
-            key_delay,
-            settle_delay,
-            pid,
-        }) => commands::navigate::run(
-            &target,
-            difficulty.as_deref(),
-            max_steps,
-            key_delay,
-            settle_delay,
-            pid,
-        ),
         Some(Command::Upload {
             tracker,
             mapping,

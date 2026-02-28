@@ -180,26 +180,6 @@ pub enum Command {
         #[arg(long)]
         pid: Option<u32>,
     },
-    /// Navigate to a song on the select screen
-    Navigate {
-        /// Target song (fuzzy search query)
-        target: String,
-        /// Difficulty (SPN, SPH, SPA, etc.)
-        #[arg(long, short)]
-        difficulty: Option<String>,
-        /// Maximum navigation steps
-        #[arg(long, default_value = "3000")]
-        max_steps: u32,
-        /// Key press delay in ms
-        #[arg(long, default_value = "80")]
-        key_delay: u64,
-        /// Settle delay after key press in ms
-        #[arg(long, default_value = "150")]
-        settle_delay: u64,
-        /// Process ID (skip automatic detection)
-        #[arg(long)]
-        pid: Option<u32>,
-    },
     /// Launch INFINITAS in borderless window mode
     Launch {
         /// bm2dxinf:// URI to launch the game

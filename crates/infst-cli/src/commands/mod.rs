@@ -11,7 +11,6 @@ pub mod hex_utils;
 pub mod hexdump;
 pub mod launch;
 pub mod login;
-pub mod navigate;
 pub mod offset;
 pub mod scan;
 pub mod search;
