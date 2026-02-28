@@ -13,12 +13,16 @@ use cli::{Args, Command};
 use tracing_subscriber::EnvFilter;
 
 fn main() -> Result<()> {
-    let args = Args::parse();
+    // URI handler: Windows passes the URI as the first argument
+    if let Some(uri) = std::env::args().nth(1)
+        && uri.starts_with("bm2dxinf://")
+    {
+        init_logging();
+        return commands::tracking::run_with_uri(&uri, None, None);
+    }
 
-    // Initialize logging (RUST_LOG がなければ warn を既定にする)
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("infst_cli=warn,infst=warn"));
-    tracing_subscriber::fmt().with_env_filter(env_filter).init();
+    let args = Args::parse();
+    init_logging();
 
     match args.command {
         Some(Command::FindOffsets { output, pid }) => commands::find_offsets::run(&output, pid),
@@ -82,6 +86,7 @@ fn main() -> Result<()> {
             token,
             pid,
         }) => commands::sync::run(endpoint.as_deref(), token.as_deref(), pid),
+        Some(Command::Register) => commands::register::run(),
         Some(Command::Upload {
             tracker,
             mapping,
@@ -94,4 +99,10 @@ fn main() -> Result<()> {
             args.api_token.as_deref(),
         ),
     }
+}
+
+fn init_logging() {
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("infst_cli=warn,infst=warn"));
+    tracing_subscriber::fmt().with_env_filter(env_filter).init();
 }

@@ -180,6 +180,8 @@ pub enum Command {
         #[arg(long)]
         pid: Option<u32>,
     },
+    /// Register bm2dxinf:// URI scheme handler
+    Register,
     /// Upload tracker data to the web service
     Upload {
         /// Tracker TSV file path

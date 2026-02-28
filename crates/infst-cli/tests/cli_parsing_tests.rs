@@ -56,14 +56,7 @@ enum Command {
         #[arg(long)]
         pid: Option<u32>,
     },
-    Launch {
-        #[arg(long)]
-        url: Option<String>,
-        #[arg(long)]
-        pid: Option<u32>,
-        #[arg(long, default_value = "120")]
-        timeout: u64,
-    },
+    Register,
 }
 
 #[derive(Clone, clap::ValueEnum)]
@@ -213,47 +206,7 @@ fn test_missing_required_arg_fails() {
 }
 
 #[test]
-fn test_parse_launch_no_args() {
-    let args = Args::try_parse_from(["infst", "launch"]).unwrap();
-    match args.command {
-        Some(Command::Launch { url, pid, timeout }) => {
-            assert!(url.is_none());
-            assert!(pid.is_none());
-            assert_eq!(timeout, 120);
-        }
-        _ => panic!("Expected Launch command"),
-    }
-}
-
-#[test]
-fn test_parse_launch_with_url() {
-    let args = Args::try_parse_from(["infst", "launch", "--url", "bm2dxinf://play/1"]).unwrap();
-    match args.command {
-        Some(Command::Launch { url, .. }) => {
-            assert_eq!(url, Some("bm2dxinf://play/1".to_string()));
-        }
-        _ => panic!("Expected Launch command"),
-    }
-}
-
-#[test]
-fn test_parse_launch_with_pid() {
-    let args = Args::try_parse_from(["infst", "launch", "--pid", "12345"]).unwrap();
-    match args.command {
-        Some(Command::Launch { pid, .. }) => {
-            assert_eq!(pid, Some(12345));
-        }
-        _ => panic!("Expected Launch command"),
-    }
-}
-
-#[test]
-fn test_parse_launch_with_timeout() {
-    let args = Args::try_parse_from(["infst", "launch", "--timeout", "60"]).unwrap();
-    match args.command {
-        Some(Command::Launch { timeout, .. }) => {
-            assert_eq!(timeout, 60);
-        }
-        _ => panic!("Expected Launch command"),
-    }
+fn test_parse_register() {
+    let args = Args::try_parse_from(["infst", "register"]).unwrap();
+    assert!(matches!(args.command, Some(Command::Register)));
 }

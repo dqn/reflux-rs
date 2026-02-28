@@ -17,6 +17,21 @@ use crate::input;
 use crate::retry::{load_song_database_with_retry, search_offsets_with_retry};
 use crate::shutdown::ShutdownSignal;
 
+/// Run the main tracking mode, launched via URI scheme handler.
+///
+/// Extracts the token from the URI, launches the game, then enters
+/// the normal tracking loop which will pick up the newly started process.
+pub fn run_with_uri(uri: &str, api_endpoint: Option<&str>, api_token: Option<&str>) -> Result<()> {
+    println!("infst v{}", env!("CARGO_PKG_VERSION"));
+    println!("Launching game from URI...");
+
+    let token = infst::launcher::extract_token_from_uri(uri)?;
+    let pid = infst::launcher::launch_game(&token)?;
+    println!("Game launched (PID: {})", pid);
+
+    run(None, api_endpoint, api_token)
+}
+
 /// Run the main tracking mode
 pub fn run(
     offsets_file: Option<&str>,

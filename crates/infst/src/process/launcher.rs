@@ -122,6 +122,117 @@ pub fn launch_game(_token: &str) -> anyhow::Result<u32> {
     anyhow::bail!("Game launching is only supported on Windows")
 }
 
+/// Register the `bm2dxinf://` URI scheme handler in the Windows registry.
+///
+/// Writes to `HKCU\Software\Classes\bm2dxinf` so that the OS launches
+/// `infst.exe "<URI>"` when a `bm2dxinf://` link is activated.
+#[cfg(target_os = "windows")]
+pub fn register_uri_scheme() -> anyhow::Result<()> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use windows::Win32::System::Registry::{
+        HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_SZ, RegCreateKeyExW, RegSetValueExW,
+    };
+    use windows::core::HSTRING;
+
+    let exe_path = std::env::current_exe()
+        .map_err(|e| anyhow::anyhow!("Failed to get current executable path: {e}"))?;
+
+    let command_value = format!("\"{}\" \"%1\"", exe_path.display());
+
+    // Helper: create/open a registry key under HKCU
+    fn create_key(parent: HKEY, subkey: &str) -> anyhow::Result<HKEY> {
+        let hkey_subkey = HSTRING::from(subkey);
+        let mut key = HKEY::default();
+        // SAFETY: RegCreateKeyExW creates or opens a registry key.
+        unsafe {
+            RegCreateKeyExW(
+                parent,
+                &hkey_subkey,
+                0,
+                None,
+                windows::Win32::System::Registry::REG_OPTION_NON_VOLATILE,
+                KEY_WRITE,
+                None,
+                &mut key,
+                None,
+            )
+            .ok()
+            .map_err(|e| anyhow::anyhow!("Failed to create registry key '{subkey}': {e}"))?;
+        }
+        Ok(key)
+    }
+
+    // Helper: set a string value on an open key
+    fn set_string_value(key: HKEY, name: Option<&str>, value: &str) -> anyhow::Result<()> {
+        use windows::core::PCWSTR;
+
+        let wide: Vec<u16> = OsStr::new(value)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        // Build the value name as a null-terminated wide string, or use PCWSTR::null()
+        // for the default value (which writes to the unnamed "" value).
+        let name_wide: Vec<u16>;
+        let pcwstr_name = if let Some(n) = name {
+            name_wide = OsStr::new(n)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+            PCWSTR::from_raw(name_wide.as_ptr())
+        } else {
+            PCWSTR::null()
+        };
+        // SAFETY: RegSetValueExW writes a REG_SZ value. The PCWSTR pointers remain valid
+        // for the duration of the call because `name_wide` and `wide` are alive.
+        unsafe {
+            RegSetValueExW(
+                key,
+                pcwstr_name,
+                0,
+                REG_SZ,
+                Some(std::slice::from_raw_parts(
+                    wide.as_ptr().cast::<u8>(),
+                    wide.len() * 2,
+                )),
+            )
+            .ok()
+            .map_err(|e| anyhow::anyhow!("Failed to set registry value: {e}"))?;
+        }
+        Ok(())
+    }
+
+    // Helper: close a registry key
+    fn close_key(key: HKEY) {
+        // SAFETY: RegCloseKey closes an open registry key handle.
+        unsafe {
+            let _ = windows::Win32::System::Registry::RegCloseKey(key);
+        }
+    }
+
+    // HKCU\Software\Classes\bm2dxinf
+    let root_key = create_key(HKEY_CURRENT_USER, r"Software\Classes\bm2dxinf")?;
+    set_string_value(root_key, None, "URL:bm2dxinf Protocol")?;
+    set_string_value(root_key, Some("URL Protocol"), "")?;
+
+    // HKCU\Software\Classes\bm2dxinf\shell\open\command
+    let cmd_key = create_key(
+        HKEY_CURRENT_USER,
+        r"Software\Classes\bm2dxinf\shell\open\command",
+    )?;
+    set_string_value(cmd_key, None, &command_value)?;
+
+    close_key(cmd_key);
+    close_key(root_key);
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn register_uri_scheme() -> anyhow::Result<()> {
+    anyhow::bail!("URI scheme registration is only supported on Windows")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
